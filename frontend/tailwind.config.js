@@ -1,0 +1,148 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        // Premium dark theme palette
+        background: {
+          primary: '#0B1020',
+          secondary: '#111827',
+          tertiary: '#1F2937',
+        },
+        surface: {
+          card: '#1F2937',
+          cardHover: '#374151',
+          input: '#111827',
+        },
+        border: {
+          DEFAULT: 'rgba(255,255,255,0.08)',
+          hover: 'rgba(255,255,255,0.12)',
+          focus: 'rgba(59, 130, 246, 0.5)',
+        },
+        text: {
+          primary: '#F9FAFB',
+          secondary: '#9CA3AF',
+          tertiary: '#6B7280',
+          muted: '#4B5563',
+        },
+        // Premium accent colors
+        navy: {
+          50: '#1e3a5f',
+          100: '#1d4ed8',
+          200: '#2563eb',
+          300: '#3b82f6',
+          400: '#60a5fa',
+          500: '#3b82f6',
+          600: '#2563eb',
+          700: '#1d4ed8',
+          800: '#1e40af',
+          900: '#1e3a8a',
+        },
+        emerald: {
+          50: '#064e3b',
+          100: '#065f46',
+          200: '#047857',
+          300: '#059669',
+          400: '#10b981',
+          500: '#10b981',
+          600: '#059669',
+          700: '#047857',
+          800: '#065f46',
+          900: '#064e3b',
+        },
+        gold: {
+          50: '#78350f',
+          100: '#92400e',
+          200: '#b45309',
+          300: '#d97706',
+          400: '#f59e0b',
+          500: '#f59e0b',
+          600: '#d97706',
+          700: '#b45309',
+          800: '#92400e',
+          900: '#78350f',
+        },
+        blue: {
+          50: '#1e40af',
+          100: '#1d4ed8',
+          200: '#2563eb',
+          300: '#3b82f6',
+          400: '#60a5fa',
+          500: '#3b82f6',
+          600: '#2563eb',
+          700: '#1d4ed8',
+          800: '#1e40af',
+          900: '#1e3a8a',
+        },
+        cyan: {
+          50: '#164e63',
+          100: '#155e75',
+          200: '#0e7490',
+          300: '#0891b2',
+          400: '#06b6d4',
+          500: '#06b6d4',
+          600: '#0891b2',
+          700: '#0e7490',
+          800: '#155e75',
+          900: '#164e63',
+        },
+      },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+      },
+      fontSize: {
+        'xs': ['0.75rem', { lineHeight: '1rem' }],
+        'sm': ['0.875rem', { lineHeight: '1.25rem' }],
+        'base': ['1rem', { lineHeight: '1.5rem' }],
+        'lg': ['1.125rem', { lineHeight: '1.75rem' }],
+        'xl': ['1.25rem', { lineHeight: '1.75rem' }],
+        '2xl': ['1.5rem', { lineHeight: '2rem' }],
+        '3xl': ['1.875rem', { lineHeight: '2.25rem' }],
+        '4xl': ['2.25rem', { lineHeight: '2.5rem' }],
+        '5xl': ['3rem', { lineHeight: '1' }],
+        '6xl': ['3.75rem', { lineHeight: '1' }],
+      },
+      spacing: {
+        '18': '4.5rem',
+        '88': '22rem',
+        '128': '32rem',
+      },
+      borderRadius: {
+        'xl': '0.75rem',
+        '2xl': '1rem',
+        '3xl': '1.5rem',
+      },
+      boxShadow: {
+        'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
+        'glow': '0 0 20px rgba(59, 130, 246, 0.5)',
+        'card': '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)',
+        'card-hover': '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+      },
+      backdropBlur: {
+        'xs': '2px',
+      },
+      animation: {
+        'fade-in': 'fadeIn 0.5s ease-in',
+        'slide-in': 'slideIn 0.3s ease-out',
+        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+      },
+      keyframes: {
+        fadeIn: {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        slideIn: {
+          '0%': { transform: 'translateY(-10px)', opacity: '0' },
+          '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+      },
+    },
+  },
+  plugins: [],
+}
