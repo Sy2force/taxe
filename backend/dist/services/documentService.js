@@ -24,10 +24,16 @@ export async function extractTextFromFile(file) {
             return await extractFromDocx(filePath);
         case '.doc':
             return await extractFromDoc(filePath);
+        case '.rtf':
+            return await extractFromRtf(filePath);
+        case '.odt':
+            return await extractFromOdt(filePath);
         case '.txt':
             return await extractFromTxt(filePath);
+        case '.md':
+            return await extractFromMarkdown(filePath);
         default:
-            throw new Error(`Unsupported file type: ${extension}`);
+            throw new Error(`Type de fichier non supporté: ${extension}. Formats supportés: PDF, DOCX, DOC, RTF, ODT, TXT, MD`);
     }
 }
 async function extractFromPDF(filePath) {
@@ -74,6 +80,149 @@ async function extractFromTxt(filePath) {
     }
     catch (error) {
         throw new Error('Impossible de lire ce fichier TXT. Il est peut-être corrompu ou mal encodé.');
+    }
+}
+async function extractFromRtf(filePath) {
+    // RTF files can be converted using LibreOffice similar to DOC
+    const libreOfficeCommands = [
+        'soffice',
+        'libreoffice',
+        '/Applications/LibreOffice.app/Contents/MacOS/soffice',
+    ];
+    let libreOfficePath = null;
+    for (const cmd of libreOfficeCommands) {
+        try {
+            await fs.access(cmd);
+            libreOfficePath = cmd;
+            break;
+        }
+        catch {
+            continue;
+        }
+    }
+    if (!libreOfficePath) {
+        throw new Error('LibreOffice est nécessaire pour convertir les fichiers RTF. Installez LibreOffice ou convertissez le fichier en .docx ou .txt.');
+    }
+    const tempDir = path.join(UPLOAD_DIR, 'temp_conversion');
+    await fs.mkdir(tempDir, { recursive: true });
+    const docxOutputPath = path.join(tempDir, path.basename(filePath, '.rtf') + '.docx');
+    try {
+        await new Promise((resolve, reject) => {
+            const process = spawn(libreOfficePath, ['--headless', '--convert-to', 'docx', '--outdir', tempDir, filePath]);
+            process.on('close', (code) => {
+                if (code === 0)
+                    resolve();
+                else
+                    reject(new Error('La conversion du fichier RTF a échoué. Convertissez-le en .docx ou .txt.'));
+            });
+            process.on('error', (err) => {
+                reject(new Error('La conversion du fichier RTF a échoué. Convertissez-le en .docx ou .txt.'));
+            });
+        });
+        try {
+            await fs.access(docxOutputPath);
+        }
+        catch {
+            throw new Error('La conversion du fichier RTF a échoué. Convertissez-le en .docx ou .txt.');
+        }
+        const dataBuffer = await fs.readFile(docxOutputPath);
+        const result = await mammoth.extractRawText({ buffer: dataBuffer });
+        let text = result.value.trim();
+        text = text.replace(/\r\n/g, '\n');
+        text = text.replace(/\n{3,}/g, '\n\n');
+        text = text.replace(/[^\S\n]+/g, ' ');
+        if (text.length === 0) {
+            throw new Error('Le fichier RTF a été converti, mais aucun texte exploitable n\'a été trouvé.');
+        }
+        await fs.rm(tempDir, { recursive: true, force: true });
+        return { text };
+    }
+    catch (error) {
+        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => { });
+        throw error;
+    }
+}
+async function extractFromOdt(filePath) {
+    // ODT files can be converted using LibreOffice similar to DOC
+    const libreOfficeCommands = [
+        'soffice',
+        'libreoffice',
+        '/Applications/LibreOffice.app/Contents/MacOS/soffice',
+    ];
+    let libreOfficePath = null;
+    for (const cmd of libreOfficeCommands) {
+        try {
+            await fs.access(cmd);
+            libreOfficePath = cmd;
+            break;
+        }
+        catch {
+            continue;
+        }
+    }
+    if (!libreOfficePath) {
+        throw new Error('LibreOffice est nécessaire pour convertir les fichiers ODT. Installez LibreOffice ou convertissez le fichier en .docx ou .txt.');
+    }
+    const tempDir = path.join(UPLOAD_DIR, 'temp_conversion');
+    await fs.mkdir(tempDir, { recursive: true });
+    const docxOutputPath = path.join(tempDir, path.basename(filePath, '.odt') + '.docx');
+    try {
+        await new Promise((resolve, reject) => {
+            const process = spawn(libreOfficePath, ['--headless', '--convert-to', 'docx', '--outdir', tempDir, filePath]);
+            process.on('close', (code) => {
+                if (code === 0)
+                    resolve();
+                else
+                    reject(new Error('La conversion du fichier ODT a échoué. Convertissez-le en .docx ou .txt.'));
+            });
+            process.on('error', (err) => {
+                reject(new Error('La conversion du fichier ODT a échoué. Convertissez-le en .docx ou .txt.'));
+            });
+        });
+        try {
+            await fs.access(docxOutputPath);
+        }
+        catch {
+            throw new Error('La conversion du fichier ODT a échoué. Convertissez-le en .docx ou .txt.');
+        }
+        const dataBuffer = await fs.readFile(docxOutputPath);
+        const result = await mammoth.extractRawText({ buffer: dataBuffer });
+        let text = result.value.trim();
+        text = text.replace(/\r\n/g, '\n');
+        text = text.replace(/\n{3,}/g, '\n\n');
+        text = text.replace(/[^\S\n]+/g, ' ');
+        if (text.length === 0) {
+            throw new Error('Le fichier ODT a été converti, mais aucun texte exploitable n\'a été trouvé.');
+        }
+        await fs.rm(tempDir, { recursive: true, force: true });
+        return { text };
+    }
+    catch (error) {
+        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => { });
+        throw error;
+    }
+}
+async function extractFromMarkdown(filePath) {
+    try {
+        const text = await fs.readFile(filePath, 'utf-8');
+        // Remove markdown syntax for plain text extraction
+        let cleanText = text.trim();
+        cleanText = cleanText.replace(/^#{1,6}\s+/gm, ''); // Remove headers
+        cleanText = cleanText.replace(/\*\*([^*]+)\*\*/g, '$1'); // Remove bold
+        cleanText = cleanText.replace(/\*([^*]+)\*/g, '$1'); // Remove italic
+        cleanText = cleanText.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1'); // Remove links
+        cleanText = cleanText.replace(/```[\s\S]*?```/g, ''); // Remove code blocks
+        cleanText = cleanText.replace(/`([^`]+)`/g, '$1'); // Remove inline code
+        cleanText = cleanText.replace(/^[-*+]\s+/gm, ''); // Remove list markers
+        cleanText = cleanText.replace(/^\d+\.\s+/gm, ''); // Remove numbered list markers
+        cleanText = cleanText.trim();
+        if (cleanText.length === 0) {
+            throw new Error('Le fichier Markdown est vide.');
+        }
+        return { text: cleanText };
+    }
+    catch (error) {
+        throw new Error('Impossible de lire ce fichier Markdown. Il est peut-être corrompu ou mal encodé.');
     }
 }
 async function extractFromDoc(filePath) {
