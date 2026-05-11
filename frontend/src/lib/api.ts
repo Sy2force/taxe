@@ -208,28 +208,28 @@ export interface VerificationSummary {
 
 // Documents
 export const documentsApi = {
-  uploadDocument: async (file: File): Promise<Document> => {
+  upload: async (file: File): Promise<Document> => {
     const formData = new FormData();
     formData.append('file', file);
     const response = await axiosInstance.post('/upload', formData);
     return response.data;
   },
 
-  getDocuments: async (): Promise<Document[]> => {
+  getAll: async (): Promise<Document[]> => {
     const response = await axiosInstance.get('/documents');
     return response.data;
   },
 
-  getDocument: async (id: string): Promise<Document> => {
+  get: async (id: string): Promise<Document> => {
     const response = await axiosInstance.get(`/documents/${id}`);
     return response.data;
   },
 
-  deleteDocument: async (id: string): Promise<void> => {
+  delete: async (id: string): Promise<void> => {
     await axiosInstance.delete(`/documents/${id}`);
   },
 
-  searchDocuments: async (query: string): Promise<SearchResult[]> => {
+  search: async (query: string): Promise<SearchResult[]> => {
     const response = await axiosInstance.post('/search', { query });
     return response.data;
   },
@@ -352,6 +352,19 @@ export const documentsApi = {
     const response = await axiosInstance.get('/db/all-documents');
     return response.data;
   },
+};
+
+// Named exports for backward compatibility
+export const analysisApi = {
+  analyzeQuestion: documentsApi.analyzeQuestion,
+  correctAnswer: documentsApi.correctAnswer,
+  improveStyle: documentsApi.improveStyle,
+  optimizeAnswer: documentsApi.optimizeAnswer,
+};
+
+export const searchApi = {
+  search: documentsApi.search,
+  searchDocuments: documentsApi.search,
 };
 
 export default documentsApi;
