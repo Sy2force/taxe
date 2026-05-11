@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, BookOpen, CheckCircle, AlertCircle, ChevronRight, Loader2, Zap } from 'lucide-react';
+import { Upload, BookOpen, CheckCircle, AlertCircle, ChevronRight, Loader2 } from 'lucide-react';
 import { useSessionContext } from '../contexts/SessionContext';
 
 interface LawsInfo {
@@ -17,7 +17,6 @@ export default function LawsPage() {
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const [lawsInfo, setLawsInfo] = useState<LawsInfo | null>(null);
-  const [genError, setGenError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
@@ -57,39 +56,6 @@ export default function LawsPage() {
     e.preventDefault();
     const f = e.dataTransfer.files[0];
     if (f) handleUpload(f);
-  };
-
-  // Déclenche la génération côté /answers — la page Answers gère tout (résilient au refresh / navigation)
-  const handleGenerateAnswers = () => {
-    const questions = sessionData?.questions || [];
-
-    // Validate 8 questions detected
-    if (questions.length < 8) {
-      setGenError(`${questions.length}/8 questions détectées. Vérifiez que toutes les questions sont présentes avant de générer les réponses.`);
-      return;
-    }
-
-    // Validate each question has Hebrew original
-    const missingHebrew = questions.some((q: any) => !q.original_text || q.original_text.trim().length < 5);
-    if (missingHebrew) {
-      setGenError('Certaines questions n\'ont pas de texte hébreu. Complétez toutes les questions avant de générer les réponses.');
-      return;
-    }
-
-    // Validate laws document is imported
-    if (!lawsInfo || !lawsInfo.documentId) {
-      setGenError('Aucun document de lois importé. Importez le document de 243 pages avant de générer les réponses.');
-      return;
-    }
-
-    // Validate laws chunks are ready
-    if (lawsInfo.chunks === 0) {
-      setGenError('Le document de lois n\'a pas été chunké. Contactez le support.');
-      return;
-    }
-
-    // All validations passed - proceed to generation
-    navigate('/answers');
   };
 
   return (
@@ -168,7 +134,7 @@ export default function LawsPage() {
               <CheckCircle className="w-4.5 h-4.5 text-emerald-400" />
             </div>
             <div className="flex-1">
-              <p className="text-[13px] font-semibold text-text-primary tracking-tight">Document de lois prêt</p>
+              <p className="text-[13px] font-semibold text-text-primary tracking-tight">Lois prêtes pour analyse</p>
               <p className="text-[11px] text-text-muted mt-0.5 truncate">{lawsInfo.name}</p>
             </div>
             <button onClick={() => setStatus('idle')} className="text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors">Changer</button>
@@ -196,50 +162,27 @@ export default function LawsPage() {
         </div>
       )}
 
-      {/* Generation error */}
-      {genError && (
-        <div className="flex items-start gap-3 p-4 rounded-2xl mb-5"
-          style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.18)' }}>
-          <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-          <p className="text-[13px] text-red-400">{genError}</p>
+      {/* Actions */}
+      {status === 'success' && (
+        <div className="flex items-center justify-between">
+          <button onClick={() => navigate('/exercise')}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-medium text-text-tertiary hover:text-text-secondary transition-colors"
+            style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
+            ← Exercice
+          </button>
+          <button onClick={() => navigate('/answers')}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all"
+            style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow: '0 0 0 1px rgba(99,102,241,0.3), 0 4px 16px rgba(99,102,241,0.25)' }}>
+            Continuer vers Suggestions
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
       )}
-
-      {/* Actions */}
-      {status === 'success' && <ActionsBar onGenerate={handleGenerateAnswers} onBack={() => navigate('/exercise')} sessionData={sessionData} />}
 
       {status === 'idle' && !uploading && (
         <div className="text-center py-16">
           <BookOpen className="w-10 h-10 mx-auto mb-3 text-zinc-800" />
           <p className="text-[13px] text-text-muted">Importez le document de lois fiscales pour commencer.</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Barre d'actions — bouton générer désactivé si aucune question importée
-function ActionsBar({ onGenerate, onBack, sessionData }: { onGenerate: () => void; onBack: () => void; sessionData: any }) {
-  const hasQuestions = sessionData?.questions && sessionData.questions.length > 0;
-
-  return (
-    <div className="flex items-center justify-between">
-      <button onClick={onBack}
-        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-medium text-text-tertiary hover:text-text-secondary transition-colors"
-        style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
-        ← Exercice
-      </button>
-      {hasQuestions ? (
-        <button onClick={onGenerate}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all"
-          style={{ background: 'linear-gradient(135deg,#10b981,#059669)', boxShadow: '0 0 0 1px rgba(16,185,129,0.3), 0 4px 16px rgba(16,185,129,0.25)' }}>
-          <Zap className="w-4 h-4" /> Analyser les questions <ChevronRight className="w-4 h-4" />
-        </button>
-      ) : (
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[12px] font-medium"
-          style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.18)', color: '#fcd34d' }}>
-          <AlertCircle className="w-3.5 h-3.5" />
-          Importez d'abord les questions
         </div>
       )}
     </div>
