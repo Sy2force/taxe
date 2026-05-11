@@ -29,6 +29,14 @@ const upload = multer({
   limits: {
     fileSize: 100 * 1024 * 1024, // 100MB limit for large PDFs
   },
+  fileFilter: (req, file, cb) => {
+    // Only accept PDF files
+    if (file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Seuls les fichiers PDF sont acceptés'));
+    }
+  }
 });
 
 // POST /api/sessions - Create new session

@@ -120,7 +120,7 @@ export default function LawsPage() {
           onMouseEnter={e => { if (!uploading) (e.currentTarget as HTMLElement).style.border = '1.5px dashed rgba(6,182,212,0.3)'; }}
           onMouseLeave={e => { if (!uploading) (e.currentTarget as HTMLElement).style.border = '1.5px dashed rgba(255,255,255,0.08)'; }}
         >
-          <input ref={fileRef} type="file" accept=".pdf,.docx,.doc,.txt" className="hidden"
+          <input ref={fileRef} type="file" accept=".pdf" className="hidden"
             onChange={e => e.target.files?.[0] && handleUpload(e.target.files[0])} />
           {uploading ? (
             <div className="flex flex-col items-center gap-3">
@@ -139,7 +139,7 @@ export default function LawsPage() {
               </div>
               <div>
                 <p className="text-[14px] font-medium text-text-secondary">Glissez le document de lois ou <span className="text-cyan-400">cliquez pour importer</span></p>
-                <p className="text-[12px] text-text-muted mt-1">PDF · DOCX · DOC · TXT</p>
+                <p className="text-[12px] text-text-muted mt-1">PDF uniquement</p>
               </div>
             </div>
           )}
