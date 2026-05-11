@@ -245,7 +245,14 @@ router.post('/:sessionId/generate-all-answers', async (req: Request, res: Respon
 
     const data = await getSessionData(sessionId);
     const questions = data.questions.filter((q: any) => q.status === 'pending');
-    const chunks = data.chunks;
+    // Format chunks for RAG service
+    const chunks = data.chunks.map((c: any) => ({
+      id: c.id,
+      text: c.text,
+      page: c.page_number || c.page,
+      startChar: c.start_char || 0,
+      endChar: c.end_char || c.text.length
+    }));
 
     if (chunks.length === 0) {
       return res.status(400).json({ error: 'Aucun document de lois importé' });
@@ -272,10 +279,10 @@ router.post('/:sessionId/generate-all-answers', async (req: Request, res: Respon
         hebrewAnswer: answer.hebrew,
         frenchExplanation: answer.french,
         reasoning: answer.reasoning,
-        sources: answer.sources,
-        lineCount: answer.hebrew.split('\n').length,
+        sources: answer.sources || [],
+        lineCount: answer.hebrew ? answer.hebrew.split('\n').length : 0,
         status: 'completed',
-        copied: false,
+        copied: 0,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
@@ -852,7 +859,7 @@ Règles :
     hebrew: hebrew || content,
     french: french || '',
     reasoning: 'Généré avec les sources fournies',
-    sources: relevantChunks.map(c => ({ chunkIndex: c.chunk_index, pageNumber: c.page_number }))
+    sources: relevantChunks.map(c => ({ chunkIndex: c.id, pageNumber: c.page, extract: c.text.substring(0, 200), documentName: 'Document de lois fiscales' }))
   };
 }
 
