@@ -28,16 +28,30 @@ export function useSession() {
     if (urlSessionId) {
       setSessionId(urlSessionId);
       setIsSpectator(mode === 'view');
-      loadSession(urlSessionId);
+      loadSession(urlSessionId).catch(() => {
+        // If loading session fails, create new session
+        setError('Session non trouvée, création nouvelle session...');
+        createNewSession().catch(() => {
+          setError('Impossible de se connecter au serveur');
+        });
+      });
     } else {
       // Check localStorage
       const storedSessionId = localStorage.getItem('current_session_id');
       if (storedSessionId) {
         setSessionId(storedSessionId);
-        loadSession(storedSessionId);
+        loadSession(storedSessionId).catch(() => {
+          // If loading fails, clear localStorage and create new session
+          localStorage.removeItem('current_session_id');
+          createNewSession().catch(() => {
+            setError('Impossible de se connecter au serveur');
+          });
+        });
       } else {
         // Create new session
-        createNewSession();
+        createNewSession().catch(() => {
+          setError('Impossible de se connecter au serveur');
+        });
       }
     }
   }, []);
@@ -50,13 +64,23 @@ export function useSession() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: 'Session sans titre' })
       });
+      
+      if (!response.ok) {
+        throw new Error(`Erreur HTTP: ${response.status}`);
+      }
+      
       const data = await response.json();
       setSessionId(data.sessionId);
       localStorage.setItem('current_session_id', data.sessionId);
       loadSession(data.sessionId);
     } catch (err) {
+      console.error('Erreur création session:', err);
       setError('Erreur lors de la création de session');
       setLoading(false);
+      // Set sessionId to a local-only fallback
+      const localSessionId = `local_${Date.now()}`;
+      setSessionId(localSessionId);
+      localStorage.setItem('current_session_id', localSessionId);
     }
   };
 
@@ -64,12 +88,19 @@ export function useSession() {
     try {
       setLoading(true);
       const response = await fetch(`${API}/sessions/${id}`);
+      
+      if (!response.ok) {
+        throw new Error(`Erreur HTTP: ${response.status}`);
+      }
+      
       const data = await response.json();
       setSessionData(data);
       setLoading(false);
     } catch (err) {
+      console.error('Erreur chargement session:', err);
       setError('Erreur lors du chargement de session');
       setLoading(false);
+      // Don't crash the app, just leave sessionData null
     }
   };
 
