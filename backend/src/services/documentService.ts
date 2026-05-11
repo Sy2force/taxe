@@ -3,11 +3,11 @@ import mammoth from 'mammoth';
 import fs from 'fs/promises';
 import path from 'path';
 import { spawn } from 'child_process';
-import { Document } from '../types';
-import { searchConcepts, type TaxConcept } from './taxKnowledgeBase';
+import { Document } from '../types.js';
+import { searchConcepts, type TaxConcept } from './taxKnowledgeBase.js';
 
 const documents: Map<string, Document> = new Map();
-const UPLOAD_DIR = path.join(__dirname, '../../uploads');
+const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 
 export async function ensureUploadDir(): Promise<void> {
   try {
@@ -36,68 +36,48 @@ export async function extractTextFromFile(file: any): Promise<{ text: string; pa
 }
 
 async function extractFromPDF(filePath: string): Promise<{ text: string; pages: number }> {
-  console.log("UPLOAD_DEBUG - Extraction PDF", { filePath });
+  let data: { text: string; numpages: number };
   try {
     const dataBuffer = await fs.readFile(filePath);
-    const data = await pdf(dataBuffer);
-    const text = data.text.trim();
-    
-    if (text.length === 0) {
-      console.error("UPLOAD_DEBUG_ERROR - PDF texte vide ou scanné");
-      throw new Error('Ce PDF semble être scanné ou composé d\'images. Aucun texte sélectionnable n\'a été trouvé. Utilisez un PDF texte ou ajoutez une fonction OCR.');
-    }
-    
-    console.log("UPLOAD_DEBUG - PDF extrait avec succès", { textLength: text.length, pages: data.numpages });
-    return { text, pages: data.numpages };
-  } catch (error) {
-    console.error("UPLOAD_DEBUG_ERROR - PDF parse échoué", error);
+    data = await pdf(dataBuffer);
+  } catch {
     throw new Error('Impossible de lire ce PDF. Il est peut-être protégé, corrompu ou mal encodé.');
   }
+  const text = data.text.trim();
+  if (text.length === 0) {
+    throw new Error('Ce PDF semble être scanné ou composé d\'images. Aucun texte sélectionnable n\'a été trouvé. Utilisez un PDF texte ou ajoutez une fonction OCR.');
+  }
+  return { text, pages: data.numpages };
 }
 
 async function extractFromDocx(filePath: string): Promise<{ text: string }> {
-  console.log("UPLOAD_DEBUG - Extraction DOCX", { filePath });
   try {
     const dataBuffer = await fs.readFile(filePath);
     const result = await mammoth.extractRawText({ buffer: dataBuffer });
     const text = result.value.trim();
-    
     if (text.length === 0) {
-      console.error("UPLOAD_DEBUG_ERROR - DOCX texte vide");
       throw new Error('Le fichier DOCX a été ouvert, mais aucun texte exploitable n\'a été trouvé.');
     }
-    
-    console.log("UPLOAD_DEBUG - DOCX extrait avec succès", { textLength: text.length });
     return { text };
   } catch (error) {
-    console.error("UPLOAD_DEBUG_ERROR - DOCX parse échoué", error);
     throw new Error('Impossible de lire ce fichier DOCX. Il est peut-être protégé ou corrompu.');
   }
 }
 
 async function extractFromTxt(filePath: string): Promise<{ text: string }> {
-  console.log("UPLOAD_DEBUG - Extraction TXT", { filePath });
   try {
     const text = await fs.readFile(filePath, 'utf-8');
     const trimmedText = text.trim();
-    
     if (trimmedText.length === 0) {
-      console.error("UPLOAD_DEBUG_ERROR - TXT vide");
       throw new Error('Le fichier TXT est vide.');
     }
-    
-    console.log("UPLOAD_DEBUG - TXT extrait avec succès", { textLength: trimmedText.length });
     return { text: trimmedText };
   } catch (error) {
-    console.error("UPLOAD_DEBUG_ERROR - TXT read échoué", error);
     throw new Error('Impossible de lire ce fichier TXT. Il est peut-être corrompu ou mal encodé.');
   }
 }
 
 async function extractFromDoc(filePath: string): Promise<{ text: string }> {
-  console.log("UPLOAD_DEBUG - Extraction DOC", { filePath });
-  
-  // Try to find LibreOffice installation
   const libreOfficeCommands = [
     'soffice',
     'libreoffice',
@@ -106,90 +86,41 @@ async function extractFromDoc(filePath: string): Promise<{ text: string }> {
 
   let libreOfficePath: string | null = null;
   for (const cmd of libreOfficeCommands) {
-    try {
-      await fs.access(cmd);
-      libreOfficePath = cmd;
-      console.log("UPLOAD_DEBUG - LibreOffice trouvé", { command: cmd });
-      break;
-    } catch {
-      continue;
-    }
+    try { await fs.access(cmd); libreOfficePath = cmd; break; } catch { continue; }
   }
 
   if (!libreOfficePath) {
-    console.error("UPLOAD_DEBUG_ERROR - LibreOffice non installé");
     throw new Error('LibreOffice est nécessaire pour convertir les anciens fichiers .doc. Installez LibreOffice ou importez une version .docx.');
   }
 
-  // Create temporary directory for conversion
   const tempDir = path.join(UPLOAD_DIR, 'temp_conversion');
   await fs.mkdir(tempDir, { recursive: true });
-  console.log("UPLOAD_DEBUG - Dossier temporaire créé", { tempDir });
-
   const docxOutputPath = path.join(tempDir, path.basename(filePath, '.doc') + '.docx');
-  console.log("UPLOAD_DEBUG - Chemin de sortie DOCX", { docxOutputPath });
 
   try {
-    // Convert .doc to .docx using LibreOffice
-    console.log("UPLOAD_DEBUG - Début conversion LibreOffice", { 
-      command: libreOfficePath,
-      input: filePath,
-      outputDir: tempDir
-    });
-    
     await new Promise<void>((resolve, reject) => {
       const process = spawn(libreOfficePath!, ['--headless', '--convert-to', 'docx', '--outdir', tempDir, filePath]);
-      
       process.on('close', (code) => {
-        if (code === 0) {
-          console.log("UPLOAD_DEBUG - Conversion LibreOffice terminée", { code });
-          resolve();
-        } else {
-          console.error("UPLOAD_DEBUG_ERROR - Conversion LibreOffice échouée", { code });
-          reject(new Error('La conversion du fichier .doc a échoué. Ouvrez-le avec Word ou LibreOffice puis enregistrez-le en .docx.'));
-        }
+        if (code === 0) resolve();
+        else reject(new Error('La conversion du fichier .doc a échoué. Ouvrez-le avec Word ou LibreOffice puis enregistrez-le en .docx.'));
       });
-
-      process.on('error', (err) => {
-        console.error("UPLOAD_DEBUG_ERROR - Erreur processus LibreOffice", err);
-        reject(new Error('La conversion du fichier .doc a échoué. Ouvrez-le avec Word ou LibreOffice puis enregistrez-le en .docx.'));
-      });
+      process.on('error', () => reject(new Error('La conversion du fichier .doc a échoué. Ouvrez-le avec Word ou LibreOffice puis enregistrez-le en .docx.')));
     });
 
-    // Check if conversion succeeded
-    try {
-      await fs.access(docxOutputPath);
-      const stats = await fs.stat(docxOutputPath);
-      console.log("UPLOAD_DEBUG - Fichier DOCX converti trouvé", { 
-        path: docxOutputPath, 
-        size: stats.size 
-      });
-    } catch {
-      console.error("UPLOAD_DEBUG_ERROR - Fichier DOCX converti non trouvé");
+    try { await fs.access(docxOutputPath); } catch {
       throw new Error('La conversion du fichier .doc a échoué. Ouvrez-le avec Word ou LibreOffice puis enregistrez-le en .docx.');
     }
 
-    // Extract text from converted .docx
     const dataBuffer = await fs.readFile(docxOutputPath);
     const result = await mammoth.extractRawText({ buffer: dataBuffer });
     const text = result.value.trim();
-    
-    console.log("UPLOAD_DEBUG - Texte extrait du DOCX converti", { textLength: text.length });
-    
     if (text.length === 0) {
-      console.error("UPLOAD_DEBUG_ERROR - DOC converti mais texte vide");
       throw new Error('Le fichier .doc a été converti, mais aucun texte exploitable n\'a été trouvé.');
     }
-    
-    // Clean up temporary files
     await fs.rm(tempDir, { recursive: true, force: true });
-    console.log("UPLOAD_DEBUG - Dossier temporaire nettoyé");
-    
     return { text };
   } catch (error) {
-    // Clean up temporary files on error
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-    console.error("UPLOAD_DEBUG_ERROR - Erreur extraction DOC", error);
     throw error;
   }
 }
@@ -208,6 +139,10 @@ export function getAllDocuments(): Document[] {
 
 export function deleteDocument(id: string): boolean {
   return documents.delete(id);
+}
+
+export function clearAllDocuments(): void {
+  documents.clear();
 }
 
 export interface SearchResult {

@@ -1,6 +1,6 @@
-import { QuestionAnalysis, AnswerCorrection, SearchResult } from '../types';
-import { searchInDocuments, countLines } from './documentService';
-import { searchConcepts, type TaxConcept } from './taxKnowledgeBase';
+import { QuestionAnalysis, AnswerCorrection, SearchResult } from '../types.js';
+import { searchInDocuments, countLines } from './documentService.js';
+import { searchConcepts, type TaxConcept } from './taxKnowledgeBase.js';
 
 const HEBREW_KEYWORDS = [
   // Fiscalité générale

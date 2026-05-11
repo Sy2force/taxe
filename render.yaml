@@ -9,7 +9,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 5050
+        value: 5051
       - key: OPENAI_API_KEY
         sync: false
       - key: ALLOWED_ORIGINS

@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
-import { SYSTEM_PROMPT } from '../prompts';
-import { QuestionAnalysis, AnswerCorrection } from '../types';
+import { SYSTEM_PROMPT } from '../prompts.js';
+import { QuestionAnalysis, AnswerCorrection } from '../types.js';
 
 let openaiClient: OpenAI | null = null;
 
@@ -12,6 +12,10 @@ export function initializeOpenAI(apiKey: string): void {
 
 export function isOpenAIEnabled(): boolean {
   return openaiClient !== null;
+}
+
+export function getOpenAIClient(): OpenAI | null {
+  return openaiClient;
 }
 
 export async function analyzeQuestionWithAI(question: string, context: string): Promise<QuestionAnalysis> {
