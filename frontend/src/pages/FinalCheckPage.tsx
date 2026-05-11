@@ -134,6 +134,16 @@ export default function FinalCheckPage() {
     setReport(null);
     setPairs([]);
     try {
+      // Check backend health first
+      try {
+        const healthRes = await fetch(`${API}/health`);
+        if (!healthRes.ok) {
+          throw new Error('Impossible de contacter le serveur Render. Vérifiez que le backend est réveillé.');
+        }
+      } catch (healthErr) {
+        throw new Error('Impossible de contacter le serveur Render. Vérifiez que le backend est réveillé.');
+      }
+
       const formData = new FormData();
       formData.append('file', f);
       const res = await fetch(`${API}/api/upload-final-document`, { method: 'POST', body: formData });
@@ -143,7 +153,16 @@ export default function FinalCheckPage() {
       const detected = extractPairs(data.content || '');
       setPairs(detected);
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : 'Erreur inconnue');
+      const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';
+      if (errorMessage.includes('Le fichier est trop volumineux')) {
+        setUploadError('Le fichier est trop volumineux. Essayez un fichier de moins de 50 Mo.');
+      } else if (errorMessage.includes('Format non supporté')) {
+        setUploadError('Format non supporté. Utilisez PDF, DOCX, DOC ou TXT.');
+      } else if (errorMessage.includes('Impossible de contacter le serveur')) {
+        setUploadError('Impossible de contacter le serveur Render. Vérifiez que le backend est réveillé.');
+      } else {
+        setUploadError(errorMessage);
+      }
     } finally {
       setUploading(false);
     }

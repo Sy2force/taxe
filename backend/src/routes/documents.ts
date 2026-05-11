@@ -12,10 +12,13 @@ import { saveDocumentToDb, getAllDocumentsFromDb, clearAllDocumentsFromDb, saveG
 
 const router = Router();
 
-// Configure Multer — absolute path so it works on Render
-const uploadDir = path.join(process.cwd(), 'uploads');
+// Configure Multer — use /tmp on Render for writable storage
+const uploadDir = process.env.NODE_ENV === 'production' ? '/tmp/uploads' : path.join(process.cwd(), 'uploads');
 const upload = multer({
   dest: uploadDir,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit
+  },
   fileFilter: (req, file, cb) => {
     const allowedMimes = [
       'application/pdf',
