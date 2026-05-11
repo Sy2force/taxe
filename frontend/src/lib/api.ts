@@ -360,11 +360,32 @@ export const analysisApi = {
   correctAnswer: documentsApi.correctAnswer,
   improveStyle: documentsApi.improveStyle,
   optimizeAnswer: documentsApi.optimizeAnswer,
+  countLines: documentsApi.countLines,
+  getHomeworkQuestions: documentsApi.getHomeworkQuestions,
+  getHomeworkQuestion: documentsApi.getHomeworkQuestion,
+  updateHomeworkQuestion: documentsApi.updateHomeworkQuestion,
+  deleteHomeworkQuestion: documentsApi.deleteHomeworkQuestion,
+  createHomeworkQuestion: async (question: Partial<HomeworkQuestion>): Promise<HomeworkQuestion> => {
+    const response = await axiosInstance.post('/homework-questions', question);
+    return response.data;
+  },
+  generateGuidedAnswer: documentsApi.generateGuidedAnswer,
 };
 
 export const searchApi = {
   search: documentsApi.search,
   searchDocuments: documentsApi.search,
+};
+
+export const homeworkApi = {
+  getHomeworkQuestions: documentsApi.getHomeworkQuestions,
+  getHomeworkQuestion: documentsApi.getHomeworkQuestion,
+  createHomeworkQuestion: async (question: Partial<HomeworkQuestion>): Promise<HomeworkQuestion> => {
+    const response = await axiosInstance.post('/homework-questions', question);
+    return response.data;
+  },
+  updateHomeworkQuestion: documentsApi.updateHomeworkQuestion,
+  deleteHomeworkQuestion: documentsApi.deleteHomeworkQuestion,
 };
 
 export default documentsApi;
