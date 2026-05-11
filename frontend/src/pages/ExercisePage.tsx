@@ -62,6 +62,12 @@ export default function ExercisePage() {
   }, [sessionData]);
 
   const handleUpload = async (f: File) => {
+    console.log('HANDLE_UPLOAD_START', {
+      fileName: f.name,
+      fileSize: f.size,
+      fileType: f.type
+    });
+    
     setUploading(true);
     setStatus('idle');
     setErrorMsg('');
@@ -70,6 +76,8 @@ export default function ExercisePage() {
     try {
       // Use SessionContext to upload to backend (ensureSession is called internally)
       const uploadData = await uploadExercise(f);
+      
+      console.log('HANDLE_UPLOAD_SUCCESS', uploadData);
       
       // Use the returned data directly instead of relying on sessionData
       const text = uploadData.extracted_text || uploadData.extractedText || '';

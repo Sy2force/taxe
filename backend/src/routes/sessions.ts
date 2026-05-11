@@ -129,18 +129,22 @@ router.post('/:sessionId/upload-exercise', upload.single('file'), async (req: Re
       hasFile: !!req.file,
       fileName: req.file?.originalname,
       mimeType: req.file?.mimetype,
-      size: req.file?.size
+      size: req.file?.size,
+      path: req.file?.path
     });
     
     if (!file) {
+      console.error("UPLOAD_EXERCISE_ERROR: No file received");
       return res.status(400).json({ error: 'Aucun fichier reçu par le serveur.' });
     }
 
     const session = await getSession(sessionId);
     if (!session) {
+      console.error("UPLOAD_EXERCISE_ERROR: Session not found", sessionId);
       return res.status(404).json({ error: 'Session non trouvée' });
     }
 
+    console.log("UPLOAD_EXERCISE_EXTRACTING_TEXT_START");
     const { text, pages } = await extractTextFromFile(file);
     
     // Log the extracted text for debugging
