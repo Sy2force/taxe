@@ -44,6 +44,10 @@ function loadQuestionsFromStorage(): Question[] {
   } catch { return []; }
 }
 
+function countLines(text: string): number {
+  return text.split('\n').length;
+}
+
 function loadAnswersFromStorage(): Map<number, Answer> {
   try {
     const raw = localStorage.getItem('answers_data');
@@ -80,15 +84,18 @@ export default function AnswersPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erreur');
+      const answerText = data.answer || '';
+      const lineCount = countLines(answerText);
+      const exceedsLimit = lineCount > 15;
       map.set(q.id, {
         questionId: q.id,
-        answer: data.answer || '',
+        answer: answerText,
         understanding: data.understanding || '',
         reasoning: data.reasoning || '',
         keywordsHe: data.keywordsHe || [],
         keywordsFr: data.keywordsFr || [],
         sources: data.sources || [],
-        status: data.status === 'no_source' || !(data.sources || []).length ? 'no_source' : 'done',
+        status: data.status === 'no_source' || !(data.sources || []).length ? 'no_source' : (exceedsLimit ? 'needs_review' : 'done'),
         copied: false,
         generatedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

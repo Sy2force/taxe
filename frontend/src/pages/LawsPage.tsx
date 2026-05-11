@@ -81,7 +81,35 @@ export default function LawsPage() {
       setGenError('Aucune question trouvée. Retournez à l\'étape Exercice pour importer vos questions.');
       return;
     }
-    // Signale à AnswersPage qu'il faut (re)générer toutes les questions
+
+    const questions = JSON.parse(questionsRaw);
+
+    // Validate 8 questions detected
+    if (questions.length < 8) {
+      setGenError(`${questions.length}/8 questions détectées. Vérifiez que toutes les questions sont présentes avant de générer les réponses.`);
+      return;
+    }
+
+    // Validate each question has Hebrew original
+    const missingHebrew = questions.some((q: any) => !q.originalHebrew || q.originalHebrew.trim().length < 5);
+    if (missingHebrew) {
+      setGenError('Certaines questions n\'ont pas de texte hébreu. Complétez toutes les questions avant de générer les réponses.');
+      return;
+    }
+
+    // Validate laws document is imported
+    if (!lawsInfo || !lawsInfo.documentId) {
+      setGenError('Aucun document de lois importé. Importez le document de 243 pages avant de générer les réponses.');
+      return;
+    }
+
+    // Validate laws chunks are ready
+    if (lawsInfo.chunks === 0) {
+      setGenError('Le document de lois n\'a pas été chunké. Contactez le support.');
+      return;
+    }
+
+    // All validations passed - proceed to generation
     localStorage.setItem('generation_requested_at', new Date().toISOString());
     localStorage.removeItem('answers_data');
     navigate('/answers');
