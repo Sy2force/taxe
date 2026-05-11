@@ -170,6 +170,32 @@ function initSQLite(db: Database.Database) {
       FOREIGN KEY (session_id) REFERENCES sessions(id)
     )
   `);
+
+  // Migration: Add cleaned_hebrew column if it doesn't exist
+  try {
+    const columns = db.prepare("PRAGMA table_info(questions)").all() as any[];
+    const hasCleanedHebrew = columns.some((col: any) => col.name === 'cleaned_hebrew');
+    
+    if (!hasCleanedHebrew) {
+      db.exec('ALTER TABLE questions ADD COLUMN cleaned_hebrew TEXT');
+      console.log('✅ Migration: cleaned_hebrew column added to questions table (SQLite)');
+    }
+  } catch (error) {
+    console.log('ℹ️  cleaned_hebrew column already exists (SQLite)');
+  }
+
+  // Migration: Add french_understanding column if it doesn't exist
+  try {
+    const columns = db.prepare("PRAGMA table_info(questions)").all() as any[];
+    const hasFrenchUnderstanding = columns.some((col: any) => col.name === 'french_understanding');
+    
+    if (!hasFrenchUnderstanding) {
+      db.exec('ALTER TABLE questions ADD COLUMN french_understanding TEXT');
+      console.log('✅ Migration: french_understanding column added to questions table (SQLite)');
+    }
+  } catch (error) {
+    console.log('ℹ️  french_understanding column already exists (SQLite)');
+  }
 }
 
 async function initPostgreSQL(pool: Pool) {
