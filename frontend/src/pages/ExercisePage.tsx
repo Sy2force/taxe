@@ -21,8 +21,12 @@ const QUESTION_START_RE = new RegExp(
     String.raw`^(תרגיל|סעיף|חלק)\s*\d+`,
     // Hébreu : שאלה + lettre hébraïque
     String.raw`^(שאלה)\s+[\u05D0-\u05EA]`,
+    // Hébreu : שאלה + chiffre hébreu (א', ב', ג')
+    String.raw`^(שאלה)\s+[\u05D0-\u05D9]'`,
     // Hébreu lettre seule : א. ב. ג. / א) ב) ג)
     String.raw`^[\u05D0-\u05D9][.)]\s+\S`,
+    // Hébreu : numéro hébreu avec apostrophe : א' ב' ג'
+    String.raw`^[\u05D0-\u05D9]'\s+\S`,
     // Français : Question / Exercice / Cas / Q + numéro
     String.raw`^(question|exercice|cas|partie)\s*(n[o°]?\s*)?\d+`,
     String.raw`^Q\d+\s*[.):–-]`,
@@ -138,49 +142,55 @@ export default function ExercisePage() {
     setShowRawText(false);
     setShowManualMode(false);
     try {
-      // Use session-based upload if sessionId exists
+      // Try session-based upload first
       if (sessionId) {
-        const formData = new FormData();
-        formData.append('file', f);
-        const res = await fetch(`${API}/sessions/${sessionId}/upload-exercise`, {
-          method: 'POST',
-          body: formData
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'import');
-        const text = data.extractedText || '';
-        if (text.length === 0) {
-          throw new Error('Le texte du document n\'a pas pu être extrait. Convertissez le fichier en .docx ou en PDF avec texte sélectionnable.');
+        try {
+          const formData = new FormData();
+          formData.append('file', f);
+          const res = await fetch(`${API}/sessions/${sessionId}/upload-exercise`, {
+            method: 'POST',
+            body: formData
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'import');
+          const text = data.extractedText || '';
+          if (text.length === 0) {
+            throw new Error('Le texte du document n\'a pas pu être extrait. Convertissez le fichier en .docx ou en PDF avec texte sélectionnable.');
+          }
+          setExtractedText(text);
+          setManualText(text);
+          setFileInfo({ name: f.name, chars: text.length });
+          setStatus('success');
+          localStorage.setItem('exercise_file', f.name);
+          await refreshSession();
+          return;
+        } catch (sessionError) {
+          console.log('Session upload failed, falling back to old method:', sessionError);
+          // Fallback to old method if session upload fails
         }
-        setExtractedText(text);
-        setManualText(text);
-        setFileInfo({ name: f.name, chars: text.length });
-        setStatus('success');
-        localStorage.setItem('exercise_file', f.name);
-        await refreshSession();
-      } else {
-        // Fallback to old method
-        const healthRes = await fetch(`${API}/health`);
-        if (!healthRes.ok) {
-          throw new Error('Impossible de contacter le serveur Render. Vérifiez que le backend est réveillé.');
-        }
-        const formData = new FormData();
-        formData.append('file', f);
-        const res = await fetch(`${API}/api/upload-exercise`, { method: 'POST', body: formData });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'import');
-        const text = data.content || data.text || '';
-        if (text.length === 0) {
-          throw new Error('Le texte du document n\'a pas pu être extrait. Convertissez le fichier en .docx ou en PDF avec texte sélectionnable.');
-        }
-        setExtractedText(text);
-        setManualText(text);
-        setFileInfo({ name: f.name, chars: text.length });
-        const detected = extractQuestionsFromText(text);
-        saveAndSet(detected);
-        setStatus('success');
-        localStorage.setItem('exercise_file', f.name);
       }
+      
+      // Fallback to old method (for local testing without database)
+      const healthRes = await fetch(`${API}/health`);
+      if (!healthRes.ok) {
+        throw new Error('Impossible de contacter le serveur. Vérifiez que le backend est réveillé.');
+      }
+      const formData = new FormData();
+      formData.append('file', f);
+      const res = await fetch(`${API}/api/upload-exercise`, { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'import');
+      const text = data.content || data.text || '';
+      if (text.length === 0) {
+        throw new Error('Le texte du document n\'a pas pu être extrait. Convertissez le fichier en .docx ou en PDF avec texte sélectionnable.');
+      }
+      setExtractedText(text);
+      setManualText(text);
+      setFileInfo({ name: f.name, chars: text.length });
+      const detected = extractQuestionsFromText(text);
+      saveAndSet(detected);
+      setStatus('success');
+      localStorage.setItem('exercise_file', f.name);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';
       if (errorMessage.includes('Le fichier est trop volumineux')) {
@@ -188,7 +198,7 @@ export default function ExercisePage() {
       } else if (errorMessage.includes('Format non supporté')) {
         setErrorMsg('Format non supporté. Utilisez PDF, DOCX, DOC ou TXT.');
       } else if (errorMessage.includes('Impossible de contacter le serveur')) {
-        setErrorMsg('Impossible de contacter le serveur Render. Vérifiez que le backend est réveillé.');
+        setErrorMsg('Impossible de contacter le serveur. Vérifiez que le backend est réveillé.');
       } else {
         setErrorMsg(errorMessage);
       }
@@ -227,6 +237,13 @@ export default function ExercisePage() {
   const addQuestion = () => {
     const qs = [...questions, { id: questions.length + 1, text: '' }];
     saveAndSet(qs);
+  };
+
+  const splitBySeparator = (separator: string) => {
+    const parts = manualText.split(separator).map(p => p.trim()).filter(p => p.length > 10);
+    const detected = parts.map((text, i) => ({ id: i + 1, text }));
+    saveAndSet(detected);
+    setShowManualMode(false);
   };
 
   const isHebrew = (text: string) => /[\u0590-\u05FF]/.test(text);
@@ -373,9 +390,17 @@ export default function ExercisePage() {
             <div className="mt-3 flex items-start gap-2 p-3 rounded-xl"
               style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.18)' }}>
               <AlertCircle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
-              <p className="text-[12px] text-amber-400/90">
-                Moins de 8 questions détectées. Vérifiez la liste et ajoutez les questions manquantes manuellement.
-              </p>
+              <div>
+                <p className="text-[12px] text-amber-400/90 mb-1">
+                  Moins de 8 questions détectées ({questions.length}/8). Vérifiez la liste et ajoutez les questions manquantes.
+                </p>
+                <button
+                  onClick={() => setShowManualMode(true)}
+                  className="text-[11px] text-indigo-400 underline"
+                >
+                  Découper manuellement le texte
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -450,16 +475,34 @@ export default function ExercisePage() {
             className="w-full bg-zinc-950/60 text-[13px] text-text-primary p-4 focus:outline-none resize-none leading-relaxed"
             placeholder={`Question 1...\n---\nQuestion 2...\n---\nQuestion 3...`}
           />
-          <div className="px-4 py-3 flex justify-end gap-2" style={{ background: 'rgba(18,18,20,0.8)' }}>
-            <button onClick={() => setShowManualMode(false)}
-              className="px-3 py-1.5 rounded-lg text-[12px] text-zinc-500 hover:text-zinc-300 transition-colors">
-              Annuler
-            </button>
-            <button onClick={handleManualSplit}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[12px] font-semibold text-white transition-all"
-              style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}>
-              <Scissors className="w-3.5 h-3.5" /> Valider les questions
-            </button>
+          <div className="px-4 py-3 flex flex-wrap gap-2 justify-between items-center" style={{ background: 'rgba(18,18,20,0.8)' }}>
+            <div className="flex gap-2">
+              <button
+                onClick={() => splitBySeparator('---')}
+                className="px-3 py-1.5 rounded-lg text-[11px] text-indigo-300 hover:text-indigo-200 transition-colors"
+                style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)' }}
+              >
+                Découper par ---
+              </button>
+              <button
+                onClick={() => splitBySeparator('\n\n')}
+                className="px-3 py-1.5 rounded-lg text-[11px] text-indigo-300 hover:text-indigo-200 transition-colors"
+                style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)' }}
+              >
+                Découper par sauts de ligne
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setShowManualMode(false)}
+                className="px-3 py-1.5 rounded-lg text-[12px] text-zinc-500 hover:text-zinc-300 transition-colors">
+                Annuler
+              </button>
+              <button onClick={handleManualSplit}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[12px] font-semibold text-white transition-all"
+                style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)' }}>
+                <Scissors className="w-3.5 h-3.5" /> Valider
+              </button>
+            </div>
           </div>
         </div>
       )}
