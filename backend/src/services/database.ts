@@ -108,6 +108,103 @@ function initSQLite(db: Database.Database) {
       created_at TEXT NOT NULL
     )
   `);
+
+  // Sessions table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      title TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      status TEXT DEFAULT 'active'
+    )
+  `);
+
+  // Documents table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS documents (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      mimetype TEXT,
+      extracted_text TEXT,
+      character_count INTEGER,
+      page_count INTEGER,
+      chunks_count INTEGER,
+      status TEXT DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES sessions(id)
+    )
+  `);
+
+  // Questions table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS questions (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      number INTEGER NOT NULL,
+      original_text TEXT NOT NULL,
+      language TEXT DEFAULT 'hebrew',
+      status TEXT DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      updated_at TEXT,
+      FOREIGN KEY (session_id) REFERENCES sessions(id)
+    )
+  `);
+
+  // Answers table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS answers (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      question_id TEXT NOT NULL,
+      hebrew_answer TEXT,
+      french_explanation TEXT,
+      reasoning TEXT,
+      sources_json TEXT,
+      line_count INTEGER,
+      status TEXT DEFAULT 'pending',
+      copied INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT,
+      FOREIGN KEY (session_id) REFERENCES sessions(id),
+      FOREIGN KEY (question_id) REFERENCES questions(id)
+    )
+  `);
+
+  // Final checks table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS final_checks (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      question_id TEXT NOT NULL,
+      score REAL,
+      status TEXT,
+      issues_json TEXT,
+      corrections_json TEXT,
+      sources_json TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES sessions(id),
+      FOREIGN KEY (question_id) REFERENCES questions(id)
+    )
+  `);
+
+  // Document chunks table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS document_chunks (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      document_id TEXT NOT NULL,
+      chunk_index INTEGER NOT NULL,
+      text TEXT NOT NULL,
+      page_number INTEGER,
+      metadata_json TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES sessions(id),
+      FOREIGN KEY (document_id) REFERENCES documents(id)
+    )
+  `);
 }
 
 async function initPostgreSQL(pool: Pool) {
@@ -168,6 +265,97 @@ async function initPostgreSQL(pool: Pool) {
       missing_sources JSONB,
       incorrect_facts JSONB,
       created_at TEXT NOT NULL
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      id TEXT PRIMARY KEY,
+      title TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      status TEXT DEFAULT 'active'
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS documents (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      mimetype TEXT,
+      extracted_text TEXT,
+      character_count INTEGER,
+      page_count INTEGER,
+      chunks_count INTEGER,
+      status TEXT DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES sessions(id)
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS questions (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      number INTEGER NOT NULL,
+      original_text TEXT NOT NULL,
+      language TEXT DEFAULT 'hebrew',
+      status TEXT DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      updated_at TEXT,
+      FOREIGN KEY (session_id) REFERENCES sessions(id)
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS answers (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      question_id TEXT NOT NULL,
+      hebrew_answer TEXT,
+      french_explanation TEXT,
+      reasoning TEXT,
+      sources_json JSONB,
+      line_count INTEGER,
+      status TEXT DEFAULT 'pending',
+      copied BOOLEAN DEFAULT FALSE,
+      created_at TEXT NOT NULL,
+      updated_at TEXT,
+      FOREIGN KEY (session_id) REFERENCES sessions(id),
+      FOREIGN KEY (question_id) REFERENCES questions(id)
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS final_checks (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      question_id TEXT NOT NULL,
+      score REAL,
+      status TEXT,
+      issues_json JSONB,
+      corrections_json JSONB,
+      sources_json JSONB,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES sessions(id),
+      FOREIGN KEY (question_id) REFERENCES questions(id)
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS document_chunks (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      document_id TEXT NOT NULL,
+      chunk_index INTEGER NOT NULL,
+      text TEXT NOT NULL,
+      page_number INTEGER,
+      metadata_json JSONB,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES sessions(id),
+      FOREIGN KEY (document_id) REFERENCES documents(id)
     )
   `);
 }
@@ -496,4 +684,245 @@ export async function clearVerificationResults() {
     const sqlite = db as Database.Database;
     sqlite.prepare('DELETE FROM verification_results').run();
   }
+}
+
+// Session functions
+export async function createSession(title: string = 'Session sans titre') {
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+  const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const now = new Date().toISOString();
+
+  if (isProduction) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      await client.query(
+        'INSERT INTO sessions (id, title, created_at, updated_at, status) VALUES ($1, $2, $3, $4, $5)',
+        [sessionId, title, now, now, 'active']
+      );
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const stmt = sqlite.prepare('INSERT INTO sessions (id, title, created_at, updated_at, status) VALUES (?, ?, ?, ?, ?)');
+    stmt.run(sessionId, title, now, now, 'active');
+  }
+
+  return sessionId;
+}
+
+export async function getSession(sessionId: string) {
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (isProduction) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      const result = await client.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+      if (result.rows.length === 0) return null;
+      return result.rows[0];
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const stmt = sqlite.prepare('SELECT * FROM sessions WHERE id = ?');
+    const row = stmt.get(sessionId) as any;
+    return row || null;
+  }
+}
+
+export async function saveDocumentToSession(doc: any) {
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (isProduction) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      await client.query(
+        'INSERT INTO documents (id, session_id, type, filename, mimetype, extracted_text, character_count, page_count, chunks_count, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
+        [doc.id, doc.sessionId, doc.type, doc.filename, doc.mimetype, doc.extractedText, doc.characterCount, doc.pageCount, doc.chunksCount, doc.status, doc.createdAt]
+      );
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const stmt = sqlite.prepare(`
+      INSERT INTO documents (id, session_id, type, filename, mimetype, extracted_text, character_count, page_count, chunks_count, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(doc.id, doc.sessionId, doc.type, doc.filename, doc.mimetype, doc.extractedText, doc.characterCount, doc.pageCount, doc.chunksCount, doc.status, doc.createdAt);
+  }
+}
+
+export async function saveQuestionToSession(question: any) {
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (isProduction) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      await client.query(
+        'INSERT INTO questions (id, session_id, number, original_text, language, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+        [question.id, question.sessionId, question.number, question.originalText, question.language, question.status, question.createdAt, question.updatedAt]
+      );
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const stmt = sqlite.prepare(`
+      INSERT INTO questions (id, session_id, number, original_text, language, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(question.id, question.sessionId, question.number, question.originalText, question.language, question.status, question.createdAt, question.updatedAt);
+  }
+}
+
+export async function saveAnswerToSession(answer: any) {
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+  const now = new Date().toISOString();
+
+  if (isProduction) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      await client.query(
+        'INSERT INTO answers (id, session_id, question_id, hebrew_answer, french_explanation, reasoning, sources_json, line_count, status, copied, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ON CONFLICT (id) DO UPDATE SET hebrew_answer=$4, french_explanation=$5, reasoning=$6, sources_json=$7, line_count=$8, status=$9, copied=$10, updated_at=$12',
+        [answer.id, answer.sessionId, answer.questionId, answer.hebrewAnswer, answer.frenchExplanation, answer.reasoning, JSON.stringify(answer.sources), answer.lineCount, answer.status, answer.copied, answer.createdAt, now]
+      );
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const stmt = sqlite.prepare(`
+      INSERT INTO answers (id, session_id, question_id, hebrew_answer, french_explanation, reasoning, sources_json, line_count, status, copied, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (id) DO UPDATE SET hebrew_answer=?, french_explanation=?, reasoning=?, sources_json=?, line_count=?, status=?, copied=?, updated_at=?
+    `);
+    stmt.run(answer.id, answer.sessionId, answer.questionId, answer.hebrewAnswer, answer.frenchExplanation, answer.reasoning, JSON.stringify(answer.sources), answer.lineCount, answer.status, answer.copied, answer.createdAt, now,
+             answer.hebrewAnswer, answer.frenchExplanation, answer.reasoning, JSON.stringify(answer.sources), answer.lineCount, answer.status, answer.copied, now);
+  }
+}
+
+export async function saveFinalCheckToSession(check: any) {
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (isProduction) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      await client.query(
+        'INSERT INTO final_checks (id, session_id, question_id, score, status, issues_json, corrections_json, sources_json, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (id) DO UPDATE SET score=$4, status=$5, issues_json=$6, corrections_json=$7, sources_json=$8',
+        [check.id, check.sessionId, check.questionId, check.score, check.status, JSON.stringify(check.issues), JSON.stringify(check.corrections), JSON.stringify(check.sources), check.createdAt]
+      );
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const stmt = sqlite.prepare(`
+      INSERT INTO final_checks (id, session_id, question_id, score, status, issues_json, corrections_json, sources_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (id) DO UPDATE SET score=?, status=?, issues_json=?, corrections_json=?, sources_json=?
+    `);
+    stmt.run(check.id, check.sessionId, check.questionId, check.score, check.status, JSON.stringify(check.issues), JSON.stringify(check.corrections), JSON.stringify(check.sources), check.createdAt,
+             check.score, check.status, JSON.stringify(check.issues), JSON.stringify(check.corrections), JSON.stringify(check.sources));
+  }
+}
+
+export async function saveDocumentChunkToSession(chunk: any) {
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (isProduction) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      await client.query(
+        'INSERT INTO document_chunks (id, session_id, document_id, chunk_index, text, page_number, metadata_json, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+        [chunk.id, chunk.sessionId, chunk.documentId, chunk.chunkIndex, chunk.text, chunk.pageNumber, JSON.stringify(chunk.metadata), chunk.createdAt]
+      );
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const stmt = sqlite.prepare(`
+      INSERT INTO document_chunks (id, session_id, document_id, chunk_index, text, page_number, metadata_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(chunk.id, chunk.sessionId, chunk.documentId, chunk.chunkIndex, chunk.text, chunk.pageNumber, JSON.stringify(chunk.metadata), chunk.createdAt);
+  }
+}
+
+export async function getSessionData(sessionId: string) {
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (isProduction) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      const session = await client.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+      const documents = await client.query('SELECT * FROM documents WHERE session_id = $1', [sessionId]);
+      const questions = await client.query('SELECT * FROM questions WHERE session_id = $1 ORDER BY number', [sessionId]);
+      const answers = await client.query('SELECT * FROM answers WHERE session_id = $1', [sessionId]);
+      const finalChecks = await client.query('SELECT * FROM final_checks WHERE session_id = $1', [sessionId]);
+      const chunks = await client.query('SELECT * FROM document_chunks WHERE session_id = $1 ORDER BY chunk_index', [sessionId]);
+
+      return {
+        session: session.rows[0] || null,
+        documents: documents.rows,
+        questions: questions.rows,
+        answers: answers.rows,
+        finalChecks: finalChecks.rows,
+        chunks: chunks.rows
+      };
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const session = sqlite.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId) as any;
+    const documents = sqlite.prepare('SELECT * FROM documents WHERE session_id = ?').all(sessionId) as any[];
+    const questions = sqlite.prepare('SELECT * FROM questions WHERE session_id = ? ORDER BY number').all(sessionId) as any[];
+    const answers = sqlite.prepare('SELECT * FROM answers WHERE session_id = ?').all(sessionId) as any[];
+    const finalChecks = sqlite.prepare('SELECT * FROM final_checks WHERE session_id = ?').all(sessionId) as any[];
+    const chunks = sqlite.prepare('SELECT * FROM document_chunks WHERE session_id = ? ORDER BY chunk_index').all(sessionId) as any[];
+
+    return {
+      session,
+      documents,
+      questions,
+      answers,
+      finalChecks,
+      chunks
+    };
+  }
+}
+
+export async function getSessionProgress(sessionId: string) {
+  const data = await getSessionData(sessionId);
+  const totalQuestions = data.questions.length;
+  const generatedAnswers = data.answers.filter((a: any) => a.status === 'completed').length;
+  const verifiedAnswers = data.finalChecks.length;
+
+  return {
+    sessionId,
+    totalQuestions,
+    generatedAnswers,
+    verifiedAnswers,
+    status: data.session?.status || 'unknown',
+    updatedAt: data.session?.updated_at
+  };
 }

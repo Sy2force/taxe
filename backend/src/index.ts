@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import documentsRouter from './routes/documents.js';
+import sessionsRouter from './routes/sessions.js';
 import { ensureUploadDir } from './services/documentService.js';
 import { initializeOpenAI } from './services/aiService.js';
 
@@ -39,6 +40,7 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.use('/api', documentsRouter);
+app.use('/api/sessions', sessionsRouter);
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', port: PORT, timestamp: new Date().toISOString() });

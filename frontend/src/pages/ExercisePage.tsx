@@ -1,6 +1,7 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, FileText, CheckCircle, AlertCircle, ChevronRight, Plus, Trash2, Loader2, Eye, Scissors } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertCircle, ChevronRight, Plus, Trash2, Loader2, Eye, Scissors, Copy, Share2 } from 'lucide-react';
+import { useSession } from '../hooks/useSession';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5050';
 
@@ -86,6 +87,15 @@ function extractQuestionsFromText(text: string): DetectedQuestion[] {
 }
 
 export default function ExercisePage() {
+  const {
+    sessionId,
+    sessionData,
+    isSpectator,
+    uploadExercise,
+    copySessionLink,
+    copySpectatorLink
+  } = useSession();
+
   const [uploading, setUploading] = useState(false);
   const [extractedText, setExtractedText] = useState('');
   const [questions, setQuestions] = useState<DetectedQuestion[]>(() => {
@@ -103,6 +113,17 @@ export default function ExercisePage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
+  // Load questions from session data when available
+  useEffect(() => {
+    if (sessionData && sessionData.questions.length > 0) {
+      const sessionQuestions = sessionData.questions.map((q: any, index: number) => ({
+        id: index + 1,
+        text: q.original_text
+      }));
+      setQuestions(sessionQuestions);
+    }
+  }, [sessionData]);
+
   const saveAndSet = useCallback((qs: DetectedQuestion[]) => {
     setQuestions(qs);
     localStorage.setItem('exercise_questions', JSON.stringify(qs));
@@ -115,29 +136,35 @@ export default function ExercisePage() {
     setShowRawText(false);
     setShowManualMode(false);
     try {
-      // Check backend health first
-      try {
+      // Use session-based upload if sessionId exists
+      if (sessionId) {
+        const data = await uploadExercise(f);
+        const text = data.extractedText || '';
+        setExtractedText(text);
+        setManualText(text);
+        setFileInfo({ name: f.name, chars: text.length });
+        setStatus('success');
+        localStorage.setItem('exercise_file', f.name);
+      } else {
+        // Fallback to old method
         const healthRes = await fetch(`${API}/health`);
         if (!healthRes.ok) {
           throw new Error('Impossible de contacter le serveur Render. Vérifiez que le backend est réveillé.');
         }
-      } catch (healthErr) {
-        throw new Error('Impossible de contacter le serveur Render. Vérifiez que le backend est réveillé.');
+        const formData = new FormData();
+        formData.append('file', f);
+        const res = await fetch(`${API}/api/upload-exercise`, { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'import');
+        const text = data.content || data.text || '';
+        setExtractedText(text);
+        setManualText(text);
+        setFileInfo({ name: f.name, chars: text.length });
+        const detected = extractQuestionsFromText(text);
+        saveAndSet(detected);
+        setStatus('success');
+        localStorage.setItem('exercise_file', f.name);
       }
-
-      const formData = new FormData();
-      formData.append('file', f);
-      const res = await fetch(`${API}/api/upload-exercise`, { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'import');
-      const text = data.content || data.text || '';
-      setExtractedText(text);
-      setManualText(text);
-      setFileInfo({ name: f.name, chars: text.length });
-      const detected = extractQuestionsFromText(text);
-      saveAndSet(detected);
-      setStatus('success');
-      localStorage.setItem('exercise_file', f.name);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';
       if (errorMessage.includes('Le fichier est trop volumineux')) {
@@ -193,9 +220,29 @@ export default function ExercisePage() {
 
       {/* Page header */}
       <div className="mb-10">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-4 text-[11px] font-semibold uppercase tracking-widest"
-          style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.2)', color: '#a5b4fc' }}>
-          Étape 1
+        <div className="flex items-center justify-between mb-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-semibold uppercase tracking-widest"
+            style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.2)', color: '#a5b4fc' }}>
+            Étape 1
+          </div>
+          {sessionId && !isSpectator && (
+            <div className="flex gap-2">
+              <button onClick={copySessionLink} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                style={{ background: 'rgba(39,39,42,0.8)', border: '1px solid rgba(255,255,255,0.08)', color: '#a1a1aa' }}>
+                <Copy className="w-3.5 h-3.5" /> Copier le lien
+              </button>
+              <button onClick={copySpectatorLink} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)', color: '#a5b4fc' }}>
+                <Share2 className="w-3.5 h-3.5" /> Partager
+              </button>
+            </div>
+          )}
+          {isSpectator && (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium"
+              style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', color: '#fbbf24' }}>
+              <Eye className="w-3.5 h-3.5" /> Mode lecture seule
+            </div>
+          )}
         </div>
         <h1 className="text-[26px] font-bold text-text-primary tracking-tight mb-2">
           Fichier d'exercice
