@@ -184,7 +184,11 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const createSession = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API}/sessions`, {
+      const url = `${API}/sessions`;
+      console.log('createSession calling:', url);
+      console.log('API_BASE_URL:', API_BASE_URL);
+      
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: 'Session sans titre' })
@@ -193,10 +197,11 @@ export function SessionProvider({ children }: SessionProviderProps) {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('createSession failed:', response.status, errorText);
-        throw new Error(`Erreur HTTP: ${response.status}`);
+        throw new Error(`Erreur HTTP: ${response.status} - ${errorText}`);
       }
       
       const data = await response.json();
+      console.log('createSession response:', data);
       const session = data.session || data;
       const sessionId = session.id || session.sessionId;
       
@@ -300,8 +305,10 @@ export function SessionProvider({ children }: SessionProviderProps) {
   };
 
   const ensureSession = async (): Promise<string> => {
+    console.log('ensureSession called, current sessionId:', sessionId);
     // Check localStorage first if React state is null
     const localSessionId = sessionId || localStorage.getItem('current_session_id');
+    console.log('ensureSession localSessionId:', localSessionId);
     
     // If we have a sessionId (from state or localStorage), verify it exists
     if (localSessionId) {
@@ -313,10 +320,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
             setSessionId(localSessionId);
             await loadSession(localSessionId);
           }
+          console.log('ensureSession using existing session:', localSessionId);
           return localSessionId;
         }
         // Session doesn't exist, clear and recreate
         localStorage.removeItem('current_session_id');
+        console.log('ensureSession existing session invalid, creating new');
       } catch (err) {
         console.warn('Session validation failed, creating new session:', err);
         localStorage.removeItem('current_session_id');
@@ -326,7 +335,10 @@ export function SessionProvider({ children }: SessionProviderProps) {
     // Create a new session
     setLoading(true);
     try {
-      const response = await fetch(`${API}/sessions`, {
+      const url = `${API}/sessions`;
+      console.log('ensureSession creating new session at:', url);
+      
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: 'Session sans titre' })
@@ -335,10 +347,11 @@ export function SessionProvider({ children }: SessionProviderProps) {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('ensureSession createSession failed:', response.status, errorText);
-        throw new Error(`Erreur HTTP: ${response.status}`);
+        throw new Error(`Erreur HTTP: ${response.status} - ${errorText}`);
       }
       
       const data = await response.json();
+      console.log('ensureSession response:', data);
       const session = data.session || data;
       const newSessionId = session.id || session.sessionId;
       
