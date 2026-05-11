@@ -15,8 +15,12 @@ interface DetectedQuestion {
 // Marqueurs de début de question/exercice (début de ligne)
 const QUESTION_START_RE = new RegExp(
   [
-    // Hébreu : שאלה / תרגיל / סעיף / חלק + numéro ou lettre hébraïque
-    String.raw`^(שאלה|תרגיל|סעיף|חלק)\s*([\d\u05D0-\u05EA][\u05D0-\u05EA]?\s*[.):']?\s*('?מס)?)`,
+    // Hébreu : שאלה 1, שאלה 2, etc. (specific pattern)
+    String.raw`^(שאלה)\s+\d+`,
+    // Hébreu : תרגיל / סעיף / חלק + numéro
+    String.raw`^(תרגיל|סעיף|חלק)\s*\d+`,
+    // Hébreu : שאלה + lettre hébraïque
+    String.raw`^(שאלה)\s+[\u05D0-\u05EA]`,
     // Hébreu lettre seule : א. ב. ג. / א) ב) ג)
     String.raw`^[\u05D0-\u05D9][.)]\s+\S`,
     // Français : Question / Exercice / Cas / Q + numéro
@@ -140,6 +144,9 @@ export default function ExercisePage() {
       if (sessionId) {
         const data = await uploadExercise(f);
         const text = data.extractedText || '';
+        if (text.length === 0) {
+          throw new Error('Le texte du document n\'a pas pu être extrait. Convertissez le fichier en .docx ou en PDF avec texte sélectionnable.');
+        }
         setExtractedText(text);
         setManualText(text);
         setFileInfo({ name: f.name, chars: text.length });
@@ -157,6 +164,9 @@ export default function ExercisePage() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'import');
         const text = data.content || data.text || '';
+        if (text.length === 0) {
+          throw new Error('Le texte du document n\'a pas pu être extrait. Convertissez le fichier en .docx ou en PDF avec texte sélectionnable.');
+        }
         setExtractedText(text);
         setManualText(text);
         setFileInfo({ name: f.name, chars: text.length });

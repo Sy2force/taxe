@@ -180,6 +180,10 @@ router.post('/upload-exercise', upload.single('file'), async (req, res) => {
             return res.status(400).json({ error: `Format non supporté : ${fileType}. Utilisez PDF, DOCX, DOC ou TXT.` });
         }
         const { text, pages } = await extractTextFromFile(req.file);
+        // Block empty extraction
+        if (!text || text.trim().length === 0) {
+            return res.status(400).json({ error: 'Le texte du document n\'a pas pu être extrait. Convertissez le fichier en .docx ou en PDF avec texte sélectionnable.' });
+        }
         const exerciseDoc = {
             id: uuidv4(),
             name: req.file.originalname,
@@ -193,7 +197,8 @@ router.post('/upload-exercise', upload.single('file'), async (req, res) => {
         res.json({ ...exerciseDoc, chars: text.length });
     }
     catch (error) {
-        res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de l\'import de l\'exercice' });
+        const errorMessage = error instanceof Error ? error.message : 'Erreur lors de l\'import de l\'exercice';
+        res.status(500).json({ error: errorMessage });
     }
 });
 // Upload laws document (243 pages) — builds RAG chunks for accurate retrieval
