@@ -289,12 +289,20 @@ export function SessionProvider({ children }: SessionProviderProps) {
   };
 
   const ensureSession = async (): Promise<string> => {
-    // If we already have a valid sessionId, verify it exists
-    if (sessionId) {
+    // Check localStorage first if React state is null
+    const localSessionId = sessionId || localStorage.getItem('current_session_id');
+    
+    // If we have a sessionId (from state or localStorage), verify it exists
+    if (localSessionId) {
       try {
-        const response = await fetch(`${API}/sessions/${sessionId}`);
+        const response = await fetch(`${API}/sessions/${localSessionId}`);
         if (response.ok) {
-          return sessionId;
+          // Update React state if it was null
+          if (!sessionId) {
+            setSessionId(localSessionId);
+            await loadSession(localSessionId);
+          }
+          return localSessionId;
         }
         // Session doesn't exist, clear and recreate
         localStorage.removeItem('current_session_id');
@@ -318,11 +326,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
       }
       
       const data = await response.json();
-      setSessionId(data.sessionId);
-      localStorage.setItem('current_session_id', data.sessionId);
-      await loadSession(data.sessionId);
+      const newSessionId = data.sessionId || data.id;
+      setSessionId(newSessionId);
+      localStorage.setItem('current_session_id', newSessionId);
+      await loadSession(newSessionId);
       setLoading(false);
-      return data.sessionId;
+      return newSessionId;
     } catch (err) {
       console.error('Erreur création session:', err);
       setError('Impossible de se connecter au backend. Vérifiez que le serveur est démarré.');
@@ -361,51 +370,61 @@ export function SessionProvider({ children }: SessionProviderProps) {
   };
 
   const uploadLaws = async (file: File) => {
-    if (!sessionId) throw new Error('Aucune session active');
-    const formData = new FormData();
-    formData.append('file', file);
-    const url = `${API}/sessions/${sessionId}/upload-laws`;
-    console.log("UPLOAD_LAWS_DEBUG", {
-      apiUrl: API_BASE_URL,
-      sessionId,
-      url,
-      fileName: file.name,
-      fileSize: file.size,
-      fileType: file.type
-    });
-    const response = await fetch(url, {
-      method: 'POST',
-      body: formData
-    });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || 'Erreur lors de l\'upload du document de lois');
+    try {
+      const validSessionId = await ensureSession();
+      const formData = new FormData();
+      formData.append('file', file);
+      const url = `${API}/sessions/${validSessionId}/upload-laws`;
+      console.log("UPLOAD_LAWS_DEBUG", {
+        apiUrl: API_BASE_URL,
+        sessionId: validSessionId,
+        url,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type
+      });
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Erreur lors de l\'upload du document de lois');
+      }
+      await refreshSession();
+    } catch (err) {
+      console.error('Erreur upload laws:', err);
+      throw err;
     }
-    await refreshSession();
   };
 
   const uploadFinalDocument = async (file: File) => {
-    if (!sessionId) throw new Error('Aucune session active');
-    const formData = new FormData();
-    formData.append('file', file);
-    const url = `${API}/sessions/${sessionId}/upload-final-document`;
-    console.log("UPLOAD_FINAL_DOCUMENT_DEBUG", {
-      apiUrl: API_BASE_URL,
-      sessionId,
-      url,
-      fileName: file.name,
-      fileSize: file.size,
-      fileType: file.type
-    });
-    const response = await fetch(url, {
-      method: 'POST',
-      body: formData
-    });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || 'Erreur lors de l\'upload du document final');
+    try {
+      const validSessionId = await ensureSession();
+      const formData = new FormData();
+      formData.append('file', file);
+      const url = `${API}/sessions/${validSessionId}/upload-final-document`;
+      console.log("UPLOAD_FINAL_DOCUMENT_DEBUG", {
+        apiUrl: API_BASE_URL,
+        sessionId: validSessionId,
+        url,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type
+      });
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Erreur lors de l\'upload du document final');
+      }
+      await refreshSession();
+    } catch (err) {
+      console.error('Erreur upload final document:', err);
+      throw err;
     }
-    await refreshSession();
   };
 
   const correctFinalDocument = async () => {

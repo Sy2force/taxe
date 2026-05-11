@@ -68,11 +68,7 @@ export default function ExercisePage() {
     setShowRawText(false);
     setShowManualMode(false);
     try {
-      // Ensure session exists before upload
-      if (!sessionId) {
-        throw new Error('Session introuvable. Rechargez la page pour créer une nouvelle session.');
-      }
-      // Use SessionContext to upload to backend
+      // Use SessionContext to upload to backend (ensureSession is called internally)
       await uploadExercise(f);
       const text = sessionData?.documents?.find((d: any) => d.type === 'exercise')?.extracted_text || '';
       if (text.length === 0) {
