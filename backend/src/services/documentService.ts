@@ -102,40 +102,56 @@ async function extractFromDoc(filePath: string): Promise<{ text: string }> {
     throw new Error('LibreOffice est nécessaire pour convertir les anciens fichiers .doc. Installez LibreOffice ou importez une version .docx.');
   }
 
+  console.log(`[extractFromDoc] LibreOffice trouvé: ${libreOfficePath}`);
+
   const tempDir = path.join(UPLOAD_DIR, 'temp_conversion');
   await fs.mkdir(tempDir, { recursive: true });
   const docxOutputPath = path.join(tempDir, path.basename(filePath, '.doc') + '.docx');
+
+  console.log(`[extractFromDoc] Conversion: ${filePath} -> ${docxOutputPath}`);
 
   try {
     await new Promise<void>((resolve, reject) => {
       const process = spawn(libreOfficePath!, ['--headless', '--convert-to', 'docx', '--outdir', tempDir, filePath]);
       process.on('close', (code) => {
+        console.log(`[extractFromDoc] Conversion terminée avec code: ${code}`);
         if (code === 0) resolve();
         else reject(new Error('La conversion du fichier .doc a échoué. Ouvrez-le avec Word ou LibreOffice puis enregistrez-le en .docx.'));
       });
-      process.on('error', () => reject(new Error('La conversion du fichier .doc a échoué. Ouvrez-le avec Word ou LibreOffice puis enregistrez-le en .docx.')));
+      process.on('error', (err) => {
+        console.error('[extractFromDoc] Erreur conversion:', err);
+        reject(new Error('La conversion du fichier .doc a échoué. Ouvrez-le avec Word ou LibreOffice puis enregistrez-le en .docx.'));
+      });
     });
 
     try { await fs.access(docxOutputPath); } catch {
+      console.error('[extractFromDoc] Fichier converti non trouvé:', docxOutputPath);
       throw new Error('La conversion du fichier .doc a échoué. Ouvrez-le avec Word ou LibreOffice puis enregistrez-le en .docx.');
     }
 
+    console.log(`[extractFromDoc] Extraction mammoth du fichier: ${docxOutputPath}`);
     const dataBuffer = await fs.readFile(docxOutputPath);
     const result = await mammoth.extractRawText({ buffer: dataBuffer });
     let text = result.value.trim();
+    
+    console.log(`[extractFromDoc] Texte extrait, longueur: ${text.length}`);
     
     // Clean up text artifacts
     text = text.replace(/\r\n/g, '\n');
     text = text.replace(/\n{3,}/g, '\n\n');
     text = text.replace(/[^\S\n]+/g, ' ');
     
+    console.log(`[extractFromDoc] Texte nettoyé, longueur: ${text.length}`);
+    
     if (text.length === 0) {
+      console.error('[extractFromDoc] Texte vide après extraction');
       throw new Error('Le fichier .doc a été converti, mais aucun texte exploitable n\'a été trouvé.');
     }
     
     await fs.rm(tempDir, { recursive: true, force: true });
     return { text };
   } catch (error) {
+    console.error('[extractFromDoc] Erreur:', error);
     await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     throw error;
   }

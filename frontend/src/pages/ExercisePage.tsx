@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, FileText, CheckCircle, AlertCircle, ChevronRight, Plus, Trash2, Loader2, Eye, Scissors, Copy, Share2 } from 'lucide-react';
-import { useSession } from '../hooks/useSession';
+import { useSessionContext } from '../contexts/SessionContext';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5050';
 
@@ -94,11 +94,9 @@ export default function ExercisePage() {
   const {
     sessionId,
     sessionData,
-    isSpectator,
-    uploadExercise,
-    copySessionLink,
-    copySpectatorLink
-  } = useSession();
+    isReadOnly,
+    refreshSession
+  } = useSessionContext();
 
   const [uploading, setUploading] = useState(false);
   const [extractedText, setExtractedText] = useState('');
@@ -142,7 +140,14 @@ export default function ExercisePage() {
     try {
       // Use session-based upload if sessionId exists
       if (sessionId) {
-        const data = await uploadExercise(f);
+        const formData = new FormData();
+        formData.append('file', f);
+        const res = await fetch(`${API}/sessions/${sessionId}/upload-exercise`, {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'import');
         const text = data.extractedText || '';
         if (text.length === 0) {
           throw new Error('Le texte du document n\'a pas pu être extrait. Convertissez le fichier en .docx ou en PDF avec texte sélectionnable.');
@@ -152,6 +157,7 @@ export default function ExercisePage() {
         setFileInfo({ name: f.name, chars: text.length });
         setStatus('success');
         localStorage.setItem('exercise_file', f.name);
+        await refreshSession();
       } else {
         // Fallback to old method
         const healthRes = await fetch(`${API}/health`);
@@ -235,24 +241,31 @@ export default function ExercisePage() {
             style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.2)', color: '#a5b4fc' }}>
             Étape 1
           </div>
-          {sessionId && !isSpectator && (
-            <div className="flex gap-2">
-              <button onClick={copySessionLink} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
-                style={{ background: 'rgba(39,39,42,0.8)', border: '1px solid rgba(255,255,255,0.08)', color: '#a1a1aa' }}>
-                <Copy className="w-3.5 h-3.5" /> Copier le lien
-              </button>
-              <button onClick={copySpectatorLink} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
-                style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)', color: '#a5b4fc' }}>
-                <Share2 className="w-3.5 h-3.5" /> Partager
-              </button>
-            </div>
-          )}
-          {isSpectator && (
-            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium"
-              style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', color: '#fbbf24' }}>
-              <Eye className="w-3.5 h-3.5" /> Mode lecture seule
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {sessionId && (
+              <div className="text-[11px] text-text-tertiary">
+                Données sauvegardées sur le serveur
+              </div>
+            )}
+            {sessionId && !isReadOnly && (
+              <div className="flex gap-2">
+                <button onClick={() => {}} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                  style={{ background: 'rgba(39,39,42,0.8)', border: '1px solid rgba(255,255,255,0.08)', color: '#a1a1aa' }}>
+                  <Copy className="w-3.5 h-3.5" /> Copier le lien
+                </button>
+                <button onClick={() => {}} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                  style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)', color: '#a5b4fc' }}>
+                  <Share2 className="w-3.5 h-3.5" /> Partager
+                </button>
+              </div>
+            )}
+            {isReadOnly && (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium"
+                style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', color: '#fbbf24' }}>
+                <Eye className="w-3.5 h-3.5" /> Mode lecture seule
+              </div>
+            )}
+          </div>
         </div>
         <h1 className="text-[26px] font-bold text-text-primary tracking-tight mb-2">
           Fichier d'exercice
@@ -262,8 +275,8 @@ export default function ExercisePage() {
         </p>
       </div>
 
-      {/* Upload Zone — visible si pas encore importé */}
-      {status !== 'success' && (
+      {/* Upload Zone — visible si pas encore importé et pas en mode spectateur */}
+      {status !== 'success' && !isReadOnly && (
         <div
           onDrop={handleDrop}
           onDragOver={e => e.preventDefault()}
@@ -299,6 +312,16 @@ export default function ExercisePage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Spectator message when no data */}
+      {status !== 'success' && isReadOnly && (
+        <div className="rounded-2xl p-10 text-center mb-6"
+          style={{ background: 'rgba(39,39,42,0.6)', border: '1.5px dashed rgba(255,255,255,0.08)' }}>
+          <Eye className="w-12 h-12 text-zinc-500 mx-auto mb-4" />
+          <p className="text-[14px] font-medium text-text-secondary mb-2">Aucun document importé</p>
+          <p className="text-[12px] text-text-muted">En mode lecture seule, vous ne pouvez voir que les documents déjà importés par l'éditeur.</p>
         </div>
       )}
 

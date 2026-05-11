@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { RotateCcw, Loader2 } from 'lucide-react';
+import { RotateCcw, Loader2, Copy, Share2, Eye } from 'lucide-react';
+import { useSessionContext } from '../contexts/SessionContext';
 
 const pageInfo: Record<string, { step: string; title: string }> = {
   '/exercise':     { step: '01', title: 'Exercice' },
@@ -16,6 +17,8 @@ export default function Header() {
   const [resetting, setResetting] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  
+  const { sessionId, isReadOnly, copySessionLink, copySpectatorLink } = useSessionContext();
 
   useEffect(() => {
     const check = async () => {
@@ -85,6 +88,47 @@ export default function Header() {
         {/* Right side */}
         <div className="flex items-center gap-1.5 flex-shrink-0">
 
+          {/* Session ID badge */}
+          {sessionId && (
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
+              style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)', color: '#a5b4fc' }}>
+              <span>Session: {sessionId.slice(0, 8)}...</span>
+            </div>
+          )}
+
+          {/* Spectator mode badge */}
+          {isReadOnly && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium"
+              style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', color: '#fbbf24' }}>
+              <Eye className="w-3 h-3" />
+              <span className="hidden sm:inline">Mode lecture seule</span>
+            </div>
+          )}
+
+          {/* Share buttons - only in edit mode */}
+          {!isReadOnly && sessionId && (
+            <>
+              <button
+                onClick={copySessionLink}
+                className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full text-[11px] font-medium transition-all"
+                style={{ background: 'rgba(39,39,42,0.8)', border: '1px solid rgba(255,255,255,0.08)', color: '#a1a1aa' }}
+                title="Copier le lien de session"
+              >
+                <Copy className="w-3 h-3" />
+                <span className="hidden sm:inline">Copier le lien</span>
+              </button>
+              <button
+                onClick={copySpectatorLink}
+                className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full text-[11px] font-medium transition-all"
+                style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)', color: '#a5b4fc' }}
+                title="Partager en lecture seule"
+              >
+                <Share2 className="w-3 h-3" />
+                <span className="hidden sm:inline">Partager</span>
+              </button>
+            </>
+          )}
+
           {/* Backend status — dot only on mobile, full pill on sm+ */}
           <div className="flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium" style={{
             background: backendStatus === 'connected'
@@ -114,15 +158,17 @@ export default function Header() {
           </div>
 
           {/* Reset — icon only on mobile, icon+text on sm+ */}
-          <button
-            onClick={() => setShowConfirm(true)}
-            className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full text-[11px] font-medium text-zinc-500 hover:text-red-400 transition-colors"
-            style={{ border: '1px solid rgba(255,255,255,0.07)' }}
-            title="Nouvelle session"
-          >
-            <RotateCcw className="w-3 h-3" />
-            <span className="hidden sm:inline">Nouvelle session</span>
-          </button>
+          {!isReadOnly && (
+            <button
+              onClick={() => setShowConfirm(true)}
+              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full text-[11px] font-medium text-zinc-500 hover:text-red-400 transition-colors"
+              style={{ border: '1px solid rgba(255,255,255,0.07)' }}
+              title="Nouvelle session"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span className="hidden sm:inline">Nouvelle session</span>
+            </button>
+          )}
         </div>
       </header>
 

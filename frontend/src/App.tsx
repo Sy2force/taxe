@@ -21,44 +21,47 @@ import Settings from './pages/Settings';
 import Upload from './pages/Upload';
 import UserGuide from './pages/UserGuide';
 import { SavedDataProvider } from './contexts/SavedDataContext';
+import { SessionProvider } from './contexts/SessionContext';
 
 function App() {
   return (
-    <SavedDataProvider>
-      <Router>
-        <div className="h-screen flex flex-col" style={{ background: '#09090b' }}>
-          <Header />
-          <div className="flex flex-1 overflow-hidden">
-            <Sidebar />
-            <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
-              <Routes>
-                <Route path="/" element={<Navigate to="/exercise" replace />} />
-                <Route path="/landing" element={<Landing />} />
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/exercise" element={<ExercisePage />} />
-                <Route path="/laws" element={<LawsPage />} />
-                <Route path="/answers" element={<AnswersPage />} />
-                <Route path="/verification" element={<VerificationPage />} />
-                <Route path="/final-check" element={<FinalCheckPage />} />
-                <Route path="/final-verification" element={<FinalVerification />} />
-                <Route path="/corrector" element={<Corrector />} />
-                <Route path="/question" element={<Question />} />
-                <Route path="/upload" element={<Upload />} />
-                <Route path="/search" element={<Search />} />
-                <Route path="/homework" element={<HomeworkQuestions />} />
-                <Route path="/declaration" element={<Declaration />} />
-                <Route path="/glossary" element={<FiscalGlossary />} />
-                <Route path="/instructions" element={<ProfessorInstructions />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/guide" element={<UserGuide />} />
-                <Route path="*" element={<Navigate to="/exercise" replace />} />
-              </Routes>
-            </main>
+    <SessionProvider>
+      <SavedDataProvider>
+        <Router>
+          <div className="h-screen flex flex-col" style={{ background: '#09090b' }}>
+            <Header />
+            <div className="flex flex-1 overflow-hidden">
+              <Sidebar />
+              <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
+                <Routes>
+                  <Route path="/" element={<Navigate to="/exercise" replace />} />
+                  <Route path="/landing" element={<Landing />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/exercise" element={<ExercisePage />} />
+                  <Route path="/laws" element={<LawsPage />} />
+                  <Route path="/answers" element={<AnswersPage />} />
+                  <Route path="/verification" element={<VerificationPage />} />
+                  <Route path="/final-check" element={<FinalCheckPage />} />
+                  <Route path="/final-verification" element={<FinalVerification />} />
+                  <Route path="/corrector" element={<Corrector />} />
+                  <Route path="/question" element={<Question />} />
+                  <Route path="/upload" element={<Upload />} />
+                  <Route path="/search" element={<Search />} />
+                  <Route path="/homework" element={<HomeworkQuestions />} />
+                  <Route path="/declaration" element={<Declaration />} />
+                  <Route path="/glossary" element={<FiscalGlossary />} />
+                  <Route path="/instructions" element={<ProfessorInstructions />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/guide" element={<UserGuide />} />
+                  <Route path="*" element={<Navigate to="/exercise" replace />} />
+                </Routes>
+              </main>
+            </div>
+            <BottomNav />
           </div>
-          <BottomNav />
-        </div>
-      </Router>
-    </SavedDataProvider>
+        </Router>
+      </SavedDataProvider>
+    </SessionProvider>
   );
 }
 
