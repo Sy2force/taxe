@@ -90,6 +90,7 @@ function initSQLite(db: Database.Database) {
       number INTEGER NOT NULL,
       original_text TEXT NOT NULL,
       original_hebrew TEXT,
+      cleaned_hebrew TEXT,
       french_translation TEXT,
       french_understanding TEXT,
       answer_limit_lines INTEGER DEFAULT 15,
@@ -266,6 +267,7 @@ async function initPostgreSQL(pool: Pool) {
       number INTEGER NOT NULL,
       original_text TEXT NOT NULL,
       original_hebrew TEXT,
+      cleaned_hebrew TEXT,
       french_translation TEXT,
       french_understanding TEXT,
       answer_limit_lines INTEGER DEFAULT 15,
@@ -279,6 +281,42 @@ async function initPostgreSQL(pool: Pool) {
       FOREIGN KEY (session_id) REFERENCES sessions(id)
     )
   `);
+
+  // Migration: Add cleaned_hebrew column if it doesn't exist
+  try {
+    await pool.query(`
+      DO $$
+      BEGIN
+          IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns 
+              WHERE table_name = 'questions' AND column_name = 'cleaned_hebrew'
+          ) THEN
+              ALTER TABLE questions ADD COLUMN cleaned_hebrew TEXT;
+          END IF;
+      END $$
+    `);
+    console.log('✅ Migration: cleaned_hebrew column added to questions table');
+  } catch (error) {
+    console.log('ℹ️  cleaned_hebrew column already exists or migration not needed');
+  }
+
+  // Migration: Add french_understanding column if it doesn't exist
+  try {
+    await pool.query(`
+      DO $$
+      BEGIN
+          IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns 
+              WHERE table_name = 'questions' AND column_name = 'french_understanding'
+          ) THEN
+              ALTER TABLE questions ADD COLUMN french_understanding TEXT;
+          END IF;
+      END $$
+    `);
+    console.log('✅ Migration: french_understanding column added to questions table');
+  } catch (error) {
+    console.log('ℹ️  french_understanding column already exists or migration not needed');
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS answers (
