@@ -35,7 +35,12 @@ const HE_QUESTION_KEYWORDS = [
 ];
 
 function extractQuestionsFromText(text: string): DetectedQuestion[] {
-  const lines = text.split(/\r?\n/);
+  // Stop before academic guidelines section
+  const stopPattern = /קווים מנחים להגשת עבודה אקדמית/i;
+  const stopIndex = text.search(stopPattern);
+  const workingText = stopIndex !== -1 ? text.substring(0, stopIndex) : text;
+
+  const lines = workingText.split(/\r?\n/);
   const found: DetectedQuestion[] = [];
   let current = '';
   let id = 1;

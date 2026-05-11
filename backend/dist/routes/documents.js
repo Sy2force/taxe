@@ -9,10 +9,13 @@ import { buildChunks, storeLawsChunks, getLawsChunks, getLawsDocumentName, getLa
 import { ETHICAL_WARNING, ANTI_FINAL_ANSWER_RESPONSE } from '../prompts.js';
 import { saveDocumentToDb, getAllDocumentsFromDb, saveGeneratedAnswer, getAllGeneratedAnswersFromDb, saveExerciseDocumentToDb, getExerciseDocumentFromDb, saveLawsDocumentToDb, getLawsDocumentFromDb } from '../services/database.js';
 const router = Router();
-// Configure Multer — absolute path so it works on Render
-const uploadDir = path.join(process.cwd(), 'uploads');
+// Configure Multer — use /tmp on Render for writable storage
+const uploadDir = process.env.NODE_ENV === 'production' ? '/tmp/uploads' : path.join(process.cwd(), 'uploads');
 const upload = multer({
     dest: uploadDir,
+    limits: {
+        fileSize: 50 * 1024 * 1024, // 50MB limit
+    },
     fileFilter: (req, file, cb) => {
         const allowedMimes = [
             'application/pdf',

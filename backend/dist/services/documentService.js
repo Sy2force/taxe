@@ -90,6 +90,9 @@ async function extractFromDoc(filePath) {
         }
     }
     if (!libreOfficePath) {
+        if (process.env.NODE_ENV === 'production') {
+            throw new Error('Les anciens fichiers .doc ne sont pas pris en charge sur le serveur de production. Convertissez le fichier en .docx puis réessayez.');
+        }
         throw new Error('LibreOffice est nécessaire pour convertir les anciens fichiers .doc. Installez LibreOffice ou importez une version .docx.');
     }
     const tempDir = path.join(UPLOAD_DIR, 'temp_conversion');
