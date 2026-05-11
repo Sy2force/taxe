@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5050";
 
-const api = axios.create({
+const axiosInstance = axios.create({
   baseURL: `${API_BASE_URL}/api`,
   headers: {
     'Content-Type': 'application/json',
@@ -208,126 +208,150 @@ export interface VerificationSummary {
 
 // Documents
 export const documentsApi = {
-  upload: async (file: File): Promise<Document> => {
+  uploadDocument: async (file: File): Promise<Document> => {
     const formData = new FormData();
     formData.append('file', file);
-    const response = await api.post('/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    const response = await axiosInstance.post('/upload', formData);
     return response.data;
   },
 
-  getAll: async (): Promise<Document[]> => {
-    const response = await api.get('/documents');
+  getDocuments: async (): Promise<Document[]> => {
+    const response = await axiosInstance.get('/documents');
     return response.data;
   },
 
-  getById: async (id: string): Promise<Document> => {
-    const response = await api.get(`/documents/${id}`);
+  getDocument: async (id: string): Promise<Document> => {
+    const response = await axiosInstance.get(`/documents/${id}`);
     return response.data;
   },
 
-  delete: async (id: string): Promise<void> => {
-    await api.delete(`/documents/${id}`);
+  deleteDocument: async (id: string): Promise<void> => {
+    await axiosInstance.delete(`/documents/${id}`);
   },
-};
 
-// Search
-export const searchApi = {
-  search: async (query: string): Promise<SearchResult[]> => {
-    const response = await api.post('/search', { query });
-    return response.data;
-  },
-};
-
-// Analysis
-export const analysisApi = {
-  analyzeQuestion: async (question: string, useAI: boolean = false): Promise<QuestionAnalysis> => {
-    const response = await api.post('/analyze-question', { question, useAI });
+  searchDocuments: async (query: string): Promise<SearchResult[]> => {
+    const response = await axiosInstance.post('/search', { query });
     return response.data;
   },
 
-  correctAnswer: async (answer: string, question: string, useAI: boolean = false): Promise<AnswerCorrection> => {
-    const response = await api.post('/correct-answer', { answer, question, useAI });
+  countLines: async (text: string): Promise<{ lineCount: number }> => {
+    const response = await axiosInstance.post('/count-lines', { text });
     return response.data;
   },
 
-  improveStyle: async (text: string): Promise<string> => {
-    const response = await api.post('/improve-style', { text });
+  uploadExercise: async (file: File): Promise<any> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await axiosInstance.post('/upload-exercise', formData);
     return response.data;
   },
 
-  optimizeAnswer: async (answer: string, question: string): Promise<string> => {
-    const response = await api.post('/optimize-answer', { answer, question });
+  uploadLaws: async (file: File): Promise<any> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await axiosInstance.post('/upload-laws', formData);
     return response.data;
   },
 
-  countLines: async (text: string): Promise<LineCount> => {
-    const response = await api.post('/count-lines', { text });
+  generateAnswer: async (questionId: number, questionText: string): Promise<any> => {
+    const response = await axiosInstance.post('/generate-answer', { questionId, questionText });
     return response.data;
   },
 
-  getEthicalWarning: async (): Promise<{ warning: string }> => {
-    const response = await api.get('/ethical-warning');
+  analyzeQuestion: async (questionText: string): Promise<QuestionAnalysis> => {
+    const response = await axiosInstance.post('/analyze-question', { questionText });
     return response.data;
   },
 
-  createHomeworkQuestion: async (id: number, questionText: string): Promise<HomeworkQuestion> => {
-    const response = await api.post('/homework-questions', { id, questionText });
+  correctAnswer: async (questionText: string, answerText: string): Promise<AnswerCorrection> => {
+    const response = await axiosInstance.post('/correct-answer', { questionText, answerText });
+    return response.data;
+  },
+
+  improveStyle: async (text: string): Promise<{ improvedText: string }> => {
+    const response = await axiosInstance.post('/improve-style', { text });
+    return response.data;
+  },
+
+  optimizeAnswer: async (question: string, answer: string): Promise<{ optimizedAnswer: string }> => {
+    const response = await axiosInstance.post('/optimize-answer', { question, answer });
     return response.data;
   },
 
   getHomeworkQuestions: async (): Promise<HomeworkQuestion[]> => {
-    const response = await api.get('/homework-questions');
+    const response = await axiosInstance.get('/homework-questions');
     return response.data;
   },
 
   getHomeworkQuestion: async (id: number): Promise<HomeworkQuestion> => {
-    const response = await api.get(`/homework-questions/${id}`);
+    const response = await axiosInstance.get(`/homework-questions/${id}`);
     return response.data;
   },
 
   updateHomeworkQuestion: async (id: number, updates: Partial<HomeworkQuestion>): Promise<HomeworkQuestion> => {
-    const response = await api.put(`/homework-questions/${id}`, updates);
+    const response = await axiosInstance.put(`/homework-questions/${id}`, updates);
     return response.data;
   },
 
   deleteHomeworkQuestion: async (id: number): Promise<void> => {
-    await api.delete(`/homework-questions/${id}`);
+    await axiosInstance.delete(`/homework-questions/${id}`);
   },
 
   checkFinalAnswerRequest: async (text: string): Promise<{ isFinalAnswerRequest: boolean; response?: string }> => {
-    const response = await api.post('/check-final-answer-request', { text });
+    const response = await axiosInstance.post('/check-final-answer-request', { text });
     return response.data;
   },
 
   compareQuestionAnswer: async (question: string, answer: string): Promise<{ comparison: QuestionAnswerComparison[] }> => {
-    const response = await api.post('/compare-question-answer', { question, answer });
+    const response = await axiosInstance.post('/compare-question-answer', { question, answer });
     return response.data;
   },
 
   reduceLines: async (text: string): Promise<{ originalLines: number; reducedLines: number; reducedText: string; suggestions: string[] }> => {
-    const response = await api.post('/reduce-lines', { text });
+    const response = await axiosInstance.post('/reduce-lines', { text });
     return response.data;
   },
 
   correctLanguageOnly: async (text: string): Promise<{ correctedText: string }> => {
-    const response = await api.post('/correct-language-only', { text });
+    const response = await axiosInstance.post('/correct-language-only', { text });
     return response.data;
   },
 
   verifyCalculations: async (text: string): Promise<{ calculations: CalculationResult[]; disclaimer: string }> => {
-    const response = await api.post('/verify-calculations', { text });
+    const response = await axiosInstance.post('/verify-calculations', { text });
     return response.data;
   },
 
   generateGuidedAnswer: async (question: string, useAI: boolean = false): Promise<{ success: boolean; guidedAnswer: GuidedAnswer; message?: string }> => {
-    const response = await api.post('/generate-guided-answer', { question, useAI });
+    const response = await axiosInstance.post('/generate-guided-answer', { question, useAI });
     return response.data;
   },
 
   verifyHomework: async (questions: HomeworkQuestion[]): Promise<{ overallStatus: string; verification: VerificationItem[]; summary: VerificationSummary }> => {
-    const response = await api.post('/verify-homework', { questions });
+    const response = await axiosInstance.post('/verify-homework', { questions });
+    return response.data;
+  },
+
+  // Database persistence routes
+  getSavedAnswers: async (): Promise<any[]> => {
+    const response = await axiosInstance.get('/db/saved-answers');
+    return response.data;
+  },
+
+  getExerciseDocument: async (): Promise<any> => {
+    const response = await axiosInstance.get('/db/exercise-document');
+    return response.data;
+  },
+
+  getLawsDocument: async (): Promise<any> => {
+    const response = await axiosInstance.get('/db/laws-document');
+    return response.data;
+  },
+
+  getAllSavedDocuments: async (): Promise<any[]> => {
+    const response = await axiosInstance.get('/db/all-documents');
     return response.data;
   },
 };
+
+export default documentsApi;
