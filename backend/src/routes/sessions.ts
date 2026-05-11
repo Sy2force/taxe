@@ -92,7 +92,7 @@ router.get('/:sessionId/progress', async (req: Request, res: Response) => {
 });
 
 // POST /api/sessions/:sessionId/upload-exercise - Upload exercise file
-router.post('/:sessionId/upload-exercise', async (req: Request, res: Response) => {
+router.post('/:sessionId/upload-exercise', upload.single('file'), async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params;
     const file = req.file;
@@ -151,7 +151,7 @@ router.post('/:sessionId/upload-exercise', async (req: Request, res: Response) =
 });
 
 // POST /api/sessions/:sessionId/upload-laws - Upload laws document (243 pages)
-router.post('/:sessionId/upload-laws', async (req: Request, res: Response) => {
+router.post('/:sessionId/upload-laws', upload.single('file'), async (req: Request, res: Response) => {
   try {
     const { sessionId } = req.params;
     const file = req.file;
