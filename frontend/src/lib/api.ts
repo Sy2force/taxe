@@ -88,7 +88,11 @@ export interface HomeworkQuestion {
   draftAnswer: string;
   correctedAnswer: string;
   checklist: string[];
-  status: 'not_started' | 'sources_found' | 'draft_written' | 'corrected' | 'ready_to_submit';
+  status: 'not_started' | 'sources_found' | 'draft_written' | 'corrected' | 'ready_to_submit' | 'copied_to_document';
+  copiedToDocument?: boolean;
+  copiedAt?: string;
+  generatedAnswer?: string;
+  changes?: string[];
 }
 
 export interface QuestionAnswerComparison {
@@ -99,8 +103,68 @@ export interface QuestionAnswerComparison {
 }
 
 export interface CalculationResult {
-  expression: string;
+  calculation: string;
   result: number;
+  formula: string;
+  steps: string[];
+}
+
+// Utility function to enforce 15-line limit on answers
+export function enforceLineLimit(text: string, maxLines: number = 15): { text: string; wasReduced: boolean } {
+  const lines = text.split('\n').filter(line => line.trim() !== '');
+  
+  if (lines.length <= maxLines) {
+    return { text, wasReduced: false };
+  }
+  
+  // Keep the first maxLines, prioritizing conclusion
+  const reducedLines = lines.slice(0, maxLines);
+  const reducedText = reducedLines.join('\n');
+  
+  return { text: reducedText, wasReduced: true };
+}
+
+// Utility function to detect questions from text
+export function detectQuestions(text: string): string[] {
+  const questions: string[] = [];
+  const lines = text.split('\n');
+  
+  // Patterns for question detection
+  const patterns = [
+    /^(\d+\.|\d+\))\s+(.+)/,  // 1. Question or 1) Question
+    /^(שאלה\s*\d+\.|שאלה\s*\d+\)):?\s*/i,  // Hebrew: שאלה 1:
+    /^question\s*\d+\.|question\s*\d+\):?\s*/i,  // English: Question 1:
+  ];
+  
+  let currentQuestion = '';
+  
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) continue;
+    
+    let isQuestionStart = false;
+    
+    for (const pattern of patterns) {
+      if (pattern.test(trimmedLine)) {
+        if (currentQuestion) {
+          questions.push(currentQuestion.trim());
+        }
+        currentQuestion = trimmedLine;
+        isQuestionStart = true;
+        break;
+      }
+    }
+    
+    if (!isQuestionStart && currentQuestion) {
+      currentQuestion += '\n' + trimmedLine;
+    }
+  }
+  
+  if (currentQuestion) {
+    questions.push(currentQuestion.trim());
+  }
+  
+  return questions;
 }
 
 export interface GuidedAnswerSection {

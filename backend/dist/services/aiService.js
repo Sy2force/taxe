@@ -1,33 +1,25 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.initializeOpenAI = initializeOpenAI;
-exports.isOpenAIEnabled = isOpenAIEnabled;
-exports.analyzeQuestionWithAI = analyzeQuestionWithAI;
-exports.correctAnswerWithAI = correctAnswerWithAI;
-exports.improveStyle = improveStyle;
-exports.optimizeAnswer = optimizeAnswer;
-const openai_1 = __importDefault(require("openai"));
-const prompts_1 = require("../prompts");
+import OpenAI from 'openai';
+import { SYSTEM_PROMPT } from '../prompts.js';
 let openaiClient = null;
-function initializeOpenAI(apiKey) {
+export function initializeOpenAI(apiKey) {
     if (apiKey) {
-        openaiClient = new openai_1.default({ apiKey });
+        openaiClient = new OpenAI({ apiKey });
     }
 }
-function isOpenAIEnabled() {
+export function isOpenAIEnabled() {
     return openaiClient !== null;
 }
-async function analyzeQuestionWithAI(question, context) {
+export function getOpenAIClient() {
+    return openaiClient;
+}
+export async function analyzeQuestionWithAI(question, context) {
     if (!openaiClient) {
         throw new Error('OpenAI not configured');
     }
     const response = await openaiClient.chat.completions.create({
         model: 'gpt-4',
         messages: [
-            { role: 'system', content: prompts_1.SYSTEM_PROMPT },
+            { role: 'system', content: SYSTEM_PROMPT },
             { role: 'user', content: `Question: ${question}\n\nContexte des documents:\n${context}\n\nAnalyse cette question selon le format demandé.` }
         ],
         temperature: 0.7,
@@ -35,14 +27,14 @@ async function analyzeQuestionWithAI(question, context) {
     const content = response.choices[0].message.content || '';
     return parseQuestionAnalysis(content);
 }
-async function correctAnswerWithAI(answer, question, context) {
+export async function correctAnswerWithAI(answer, question, context) {
     if (!openaiClient) {
         throw new Error('OpenAI not configured');
     }
     const response = await openaiClient.chat.completions.create({
         model: 'gpt-4',
         messages: [
-            { role: 'system', content: prompts_1.SYSTEM_PROMPT },
+            { role: 'system', content: SYSTEM_PROMPT },
             { role: 'user', content: `Question: ${question}\n\nRéponse de l'étudiante: ${answer}\n\nContexte des documents:\n${context}\n\nCorrige cette réponse selon le format demandé.` }
         ],
         temperature: 0.7,
@@ -50,14 +42,14 @@ async function correctAnswerWithAI(answer, question, context) {
     const content = response.choices[0].message.content || '';
     return parseAnswerCorrection(content);
 }
-async function improveStyle(text) {
+export async function improveStyle(text) {
     if (!openaiClient) {
         throw new Error('OpenAI not configured');
     }
     const response = await openaiClient.chat.completions.create({
         model: 'gpt-4',
         messages: [
-            { role: 'system', content: prompts_1.SYSTEM_PROMPT },
+            { role: 'system', content: SYSTEM_PROMPT },
             { role: 'user', content: `Texte à améliorer: ${text}\n\nCorrige uniquement la langue et le style. Ne change pas le raisonnement. Indique les points juridiques à vérifier.` }
         ],
         temperature: 0.5,
@@ -65,14 +57,14 @@ async function improveStyle(text) {
     const content = response.choices[0].message.content || '';
     return parseStyleImprovement(content);
 }
-async function optimizeAnswer(answer, question) {
+export async function optimizeAnswer(answer, question) {
     if (!openaiClient) {
         throw new Error('OpenAI not configured');
     }
     const response = await openaiClient.chat.completions.create({
         model: 'gpt-4',
         messages: [
-            { role: 'system', content: prompts_1.SYSTEM_PROMPT },
+            { role: 'system', content: SYSTEM_PROMPT },
             { role: 'user', content: `Question: ${question}\n\nRéponse: ${answer}\n\nDonne des conseils pour optimiser cette réponse sans la réécrire complètement.` }
         ],
         temperature: 0.7,
@@ -89,6 +81,13 @@ function parseQuestionAnalysis(content) {
         suggestedStructure: extractList(content, 'Structure conseillée'),
         errorsToAvoid: extractList(content, 'Erreurs à éviter'),
         checklist: extractList(content, 'Checklist'),
+        subject: extractSection(content, 'Sujet fiscal'),
+        personsConcerned: extractList(content, 'Personnes concernées'),
+        importantDates: extractList(content, 'Dates importantes'),
+        importantAmounts: extractList(content, 'Montants importants'),
+        fiscalOperations: extractList(content, 'Opérations fiscales'),
+        articlesOrNotions: extractList(content, 'Articles ou notions'),
+        subQuestions: extractList(content, 'Sous-questions'),
     };
 }
 function parseAnswerCorrection(content) {
@@ -101,6 +100,7 @@ function parseAnswerCorrection(content) {
         score = 'almost_complete';
     else if (missingCount <= 4)
         score = 'needs_improvement';
+    const scoreNumeric = missingCount === 0 ? 100 : Math.max(0, 100 - (missingCount * 15));
     return {
         positivePoints: extractList(content, 'Points positifs'),
         missingElements: extractList(content, 'Ce qui manque'),
@@ -109,6 +109,23 @@ function parseAnswerCorrection(content) {
         improvementAdvice: extractList(content, 'Conseils d\'amélioration'),
         finalChecklist: checklist,
         score,
+        scoreNumeric,
+        respondsToQuestion: missingCount < 3,
+        allSubQuestionsAddressed: missingCount === 0,
+        correctTaxpayerIdentified: content.toLowerCase().includes('contribuable'),
+        fiscalEventIdentified: content.toLowerCase().includes('événement'),
+        taxableAmountIndicated: content.toLowerCase().includes('montant'),
+        incomeSourceIndicated: content.toLowerCase().includes('source'),
+        taxRateIndicated: content.toLowerCase().includes('taux'),
+        taxTimingIndicated: content.toLowerCase().includes('moment') || content.toLowerCase().includes('date'),
+        sourcesCited: content.toLowerCase().includes('source') || content.toLowerCase().includes('section'),
+        conclusionClear: content.toLowerCase().includes('conclusion'),
+        reasoningStructure: {
+            facts: content.toLowerCase().includes('faits'),
+            rule: content.toLowerCase().includes('règle'),
+            application: content.toLowerCase().includes('application'),
+            conclusion: content.toLowerCase().includes('conclusion'),
+        },
     };
 }
 function parseStyleImprovement(content) {

@@ -1,51 +1,80 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.analyzeQuestionLocally = analyzeQuestionLocally;
-exports.correctAnswerLocally = correctAnswerLocally;
-const documentService_1 = require("./documentService");
+import { searchInDocuments, countLines } from './documentService.js';
+import { searchConcepts } from './taxKnowledgeBase.js';
 const HEBREW_KEYWORDS = [
-    'דיבידנד', 'רווח הון', 'מס חברות', 'מניות', 'בעל מניות',
-    'חברה', 'תושב ישראל', 'הכנסה חייבת', 'שיעור המס', 'מקור ההכנסה',
-    'חברה נשלטת זרה', 'חברת משלח יד זרה'
+    // Fiscalité générale
+    'מס', 'מס הכנסה', 'הכנסה חייבת', 'שיעור המס', 'מקור ההכנסה',
+    'אירוע מס', 'מועד החיוב', 'תושב ישראל', 'תושב חוץ',
+    // Sociétés
+    'חברה', 'חבר בני אדם', 'מס חברות', 'סעיף 126', 'רווחים',
+    'רווחי החברה', 'חלוקת רווחים', 'אישיות משפטית נפרדת',
+    // Dividendes
+    'דיבידנד', 'חלוקת דיבידנד', 'סעיף 125ב', 'בעל מניות',
+    'בעל מניות מהותי', '25%', '30%',
+    // Actions et plus-value
+    'מניות', 'מכירת מניות', 'רווח הון', 'מחיר מקורי',
+    'יום רכישה', 'תמורה', 'סעיף 88', 'מניות הטבה', 'סעיף 94',
+    // Partenariat
+    'שותפות', 'שותפים', 'סעיף 63', 'הכנסת השותפות',
+    'גישה מעורבת', 'פסק דין שדות',
+    // Prêts et retraits
+    'הלוואה', 'הלוואות מוטבות', 'ריבית רעיונית',
+    'סעיף 3(ט)', 'סעיף 3(ט1)', 'סעיף 3(י)',
+    'משיכה מחברה', 'העמדת נכס', 'יתרת זכות', 'בעל שליטה',
+    // Sociétés étrangères
+    'חברה זרה', 'חברה נשלטת זרה', 'חברת משלח יד זרה',
+    'הכנסה פסיבית', 'דיבידנד רעיוני', 'שליטה', 'תושבות'
 ];
-function analyzeQuestionLocally(question) {
+export function analyzeQuestionLocally(question) {
     const keywords = extractKeywords(question);
-    const searchResults = (0, documentService_1.searchInDocuments)(keywords.join(' '));
+    const detectedConcepts = searchConcepts(question);
+    const searchResults = searchInDocuments(keywords.join(' '));
+    // Enhance keywords with concept-based keywords
+    const enhancedKeywords = [...keywords];
+    detectedConcepts.forEach(concept => {
+        enhancedKeywords.push(...concept.motsClesFrancais);
+        enhancedKeywords.push(...concept.motsClesHebreu);
+    });
     return {
-        whatQuestionAsks: identifyWhatQuestionAsks(question),
-        factsToIdentify: extractFacts(question),
-        keywordsToSearch: keywords,
-        possibleRules: suggestRules(keywords),
-        usefulPassages: searchResults.slice(0, 5),
-        suggestedStructure: ['Fait', 'Règle', 'Application', 'Conclusion'],
-        errorsToAvoid: [
-            'Ne pas identifier les faits',
-            'Oublier de citer la règle fiscale',
-            'Ne pas appliquer la règle au cas',
-            'Oublier la conclusion',
-            'Dépasser 15 lignes'
-        ],
-        checklist: generateChecklist()
+        whatQuestionAsks: identifyWhatQuestionAsks(question, detectedConcepts),
+        factsToIdentify: extractFacts(question, detectedConcepts),
+        keywordsToSearch: [...new Set(enhancedKeywords)], // Remove duplicates
+        possibleRules: identifyPossibleRules(question, detectedConcepts),
+        usefulPassages: searchResults,
+        suggestedStructure: suggestStructure(question, detectedConcepts),
+        errorsToAvoid: identifyErrorsToAvoid(question, detectedConcepts),
+        checklist: generateChecklist(detectedConcepts),
+        // Enhanced fields
+        subject: identifySubject(question, detectedConcepts),
+        personsConcerned: extractPersons(question, detectedConcepts),
+        importantDates: extractDates(question),
+        importantAmounts: extractAmounts(question),
+        fiscalOperations: extractFiscalOperations(question, detectedConcepts),
+        articlesOrNotions: identifyArticles(question, detectedConcepts),
+        subQuestions: extractSubQuestions(question),
     };
 }
-function correctAnswerLocally(answer, question) {
-    const lineCount = (0, documentService_1.countLines)(answer);
-    const missingElements = identifyMissingElements(answer, question);
-    let score = 'incomplete';
-    if (missingElements.length === 0 && !lineCount.exceedsLimit)
-        score = 'complete';
-    else if (missingElements.length <= 2 && !lineCount.exceedsLimit)
-        score = 'almost_complete';
-    else if (missingElements.length <= 4)
-        score = 'needs_improvement';
+export function correctAnswerLocally(answer, question) {
+    const score = calculateScore(answer);
     return {
         positivePoints: identifyPositivePoints(answer),
-        missingElements,
-        legalTaxIssues: identifyLegalIssues(answer),
-        languageCorrection: 'Utilisez le mode IA pour une correction linguistique avancée',
-        improvementAdvice: generateImprovementAdvice(answer, question),
-        finalChecklist: generateFinalChecklist(answer),
-        score
+        missingElements: identifyMissingElements(answer),
+        legalTaxIssues: identifyLegalTaxIssues(answer),
+        languageCorrection: correctLanguage(answer),
+        improvementAdvice: generateImprovementAdvice(answer),
+        finalChecklist: generateFinalChecklist(),
+        score: score.category,
+        scoreNumeric: score.numeric,
+        respondsToQuestion: checkRespondsToQuestion(answer, question),
+        allSubQuestionsAddressed: checkSubQuestions(answer, question),
+        correctTaxpayerIdentified: checkTaxpayerIdentified(answer),
+        fiscalEventIdentified: checkFiscalEvent(answer),
+        taxableAmountIndicated: checkTaxableAmount(answer),
+        incomeSourceIndicated: checkIncomeSource(answer),
+        taxRateIndicated: checkTaxRate(answer),
+        taxTimingIndicated: checkTaxTiming(answer),
+        sourcesCited: checkSourcesCited(answer),
+        conclusionClear: checkConclusion(answer),
+        reasoningStructure: checkReasoningStructure(answer),
     };
 }
 function extractKeywords(question) {
@@ -64,119 +93,413 @@ function extractKeywords(question) {
     }
     return keywords.length > 0 ? keywords : ['impôt', 'société'];
 }
-function identifyWhatQuestionAsks(question) {
-    if (question.toLowerCase().includes('calculer') || question.toLowerCase().includes('montant')) {
+function identifyWhatQuestionAsks(question, concepts = []) {
+    const lowerQuestion = question.toLowerCase();
+    // Use concepts to provide more specific analysis
+    if (concepts.length > 0) {
+        const conceptNames = concepts.map(c => c.nomFrancais).join(', ');
+        if (lowerQuestion.includes('calculer') || lowerQuestion.includes('montant')) {
+            return `La question demande de calculer un montant ou un taux d'imposition concernant : ${conceptNames}`;
+        }
+        if (lowerQuestion.includes('expliquer') || lowerQuestion.includes('définir')) {
+            return `La question demande d'expliquer ou définir le concept de : ${conceptNames}`;
+        }
+        if (lowerQuestion.includes('condition') || lowerQuestion.includes('critère')) {
+            return `La question demande d'identifier les conditions ou critères pour : ${conceptNames}`;
+        }
+        return `La question demande d'analyser une situation fiscale concernant : ${conceptNames}`;
+    }
+    // Fallback to original logic
+    if (lowerQuestion.includes('calculer') || lowerQuestion.includes('montant')) {
         return 'La question demande de calculer un montant ou un taux d\'imposition';
     }
-    if (question.toLowerCase().includes('expliquer') || question.toLowerCase().includes('définir')) {
+    if (lowerQuestion.includes('expliquer') || lowerQuestion.includes('définir')) {
         return 'La question demande d\'expliquer ou définir un concept';
     }
-    if (question.toLowerCase().includes('condition') || question.toLowerCase().includes('critère')) {
+    if (lowerQuestion.includes('condition') || lowerQuestion.includes('critère')) {
         return 'La question demande d\'identifier les conditions ou critères';
     }
     return 'La question demande d\'analyser une situation fiscale';
 }
-function extractFacts(question) {
+function extractFacts(question, concepts = []) {
     const facts = [];
-    const patterns = [
-        /(\d+%)\s*(?:d'impôt|de taxe)/gi,
-        /(résident|non-résident|israélien|étranger)/gi,
-        /(société|entreprise|compagnie)/gi,
-        /(dividende|bénéfice|revenu)/gi
+    // Add concept-specific facts
+    concepts.forEach(concept => {
+        facts.push(...concept.elementsAVerifier);
+    });
+    // Original logic
+    if (question.includes('מי') || question.includes('qui')) {
+        facts.push('Identifier les personnes ou sociétés concernées');
+    }
+    if (question.includes('מתי') || question.includes('quand') || question.includes('date')) {
+        facts.push('Identifier les dates importantes');
+    }
+    if (question.includes('כמה') || question.includes('combien') || question.includes('montant')) {
+        facts.push('Identifier les montants concernés');
+    }
+    if (question.includes('מה') || question.includes('quelle opération')) {
+        facts.push('Identifier l\'opération fiscale');
+    }
+    // Remove duplicates
+    return [...new Set(facts)].length > 0 ? [...new Set(facts)] : ['Identifiez les personnes et entités impliquées', 'Identifiez les montants et pourcentages'];
+}
+function identifyPossibleRules(question, concepts = []) {
+    const rules = [];
+    // Add concept-specific rules
+    concepts.forEach(concept => {
+        if (concept.nomFrancais.includes('dividende')) {
+            rules.push('Section 125b - Dividendes (25% ou 30%)');
+            rules.push('Bénéficiaire effectif - actionnaire substantiel');
+        }
+        if (concept.nomFrancais.includes('plus-value')) {
+            rules.push('Section 88 - Plus-values sur actions');
+            rules.push('Section 94 - Actions à privilèges');
+        }
+        if (concept.nomFrancais.includes('société')) {
+            rules.push('Section 126 - Impôt sur les sociétés');
+            rules.push('Personnalité morale séparée');
+        }
+        if (concept.nomFrancais.includes('prêt')) {
+            rules.push('Section 3(9) - Prêts à taux réduit');
+            rules.push('Section 3(10) - Retraits d\'une société');
+        }
+    });
+    // Original logic as fallback
+    if (question.includes('dividende') || question.includes('דיבידנד')) {
+        rules.push('Section 125b - Dividendes (25% ou 30%)');
+        rules.push('Bénéficiaire effectif - actionnaire substantiel');
+    }
+    if (question.includes('plus-value') || question.includes('רווח הון')) {
+        rules.push('Section 88 - Plus-values sur actions');
+        rules.push('Section 94 - Actions à privilèges');
+    }
+    if (question.includes('société') || question.includes('חברה')) {
+        rules.push('Section 126 - Impôt sur les sociétés');
+        rules.push('Personnalité morale séparée');
+    }
+    if (question.includes('prêt') || question.includes('הלוואה')) {
+        rules.push('Section 3(9) - Prêts à taux réduit');
+        rules.push('Section 3(10) - Retraits d\'une société');
+    }
+    return [...new Set(rules)].length > 0 ? [...new Set(rules)] : ['Règles générales d\'imposition'];
+}
+function suggestStructure(question, concepts = []) {
+    // Use concept structure if available
+    if (concepts.length > 0 && concepts[0].structureReponseConseillee.length > 0) {
+        return concepts[0].structureReponseConseillee;
+    }
+    // Default structure
+    return [
+        'Faits : Qui, quoi, quand, combien',
+        'Règle : Article applicable et taux',
+        'Application : Comment la règle s\'applique au cas',
+        'Conclusion : Événement fiscal, qui paie, combien, pourquoi'
     ];
-    for (const pattern of patterns) {
-        const matches = question.match(pattern);
-        if (matches) {
-            facts.push(...matches);
+}
+function identifyErrorsToAvoid(question, concepts = []) {
+    const errors = [];
+    // Add concept-specific errors
+    concepts.forEach(concept => {
+        errors.push(...concept.erreursFrequentes);
+    });
+    // Default errors
+    errors.push('Ne pas oublier d\'identifier le contribuable', 'Ne pas oublier de mentionner le taux d\'imposition', 'Ne pas oublier la source du revenu', 'Ne pas oublier le moment d\'imposition', 'Ne pas confondre dividendes et salaires', 'Ne pas oublier de citer les sources');
+    return [...new Set(errors)];
+}
+function generateChecklist(concepts = []) {
+    const checklist = [
+        'Contribuable identifié',
+        'Événement fiscal identifié',
+        'Montant imposable indiqué',
+        'Source de revenu indiquée',
+        'Taux d\'imposition indiqué',
+        'Moment d\'imposition indiqué',
+        'Sources citées',
+        'Conclusion claire'
+    ];
+    // Add concept-specific checklist items
+    concepts.forEach(concept => {
+        checklist.push(...concept.elementsAVerifier.map(item => `Vérifier : ${item}`));
+    });
+    return [...new Set(checklist)];
+}
+function identifySubject(question, concepts = []) {
+    if (concepts.length > 0) {
+        return concepts[0].nomFrancais;
+    }
+    // Fallback to original logic
+    if (question.includes('dividende'))
+        return 'Dividendes';
+    if (question.includes('plus-value'))
+        return 'Plus-values';
+    if (question.includes('société'))
+        return 'Impôt sur les sociétés';
+    if (question.includes('prêt'))
+        return 'Prêts et intérêts';
+    if (question.includes('partenariat'))
+        return 'Partenariats';
+    return 'Fiscalité générale';
+}
+function extractPersons(question, concepts = []) {
+    const persons = [];
+    // Add concept-specific persons
+    concepts.forEach(concept => {
+        if (concept.nomFrancais.includes('actionnaire')) {
+            persons.push('Actionnaire');
+        }
+        if (concept.nomFrancais.includes('société')) {
+            persons.push('Société');
+        }
+    });
+    // Original logic
+    if (question.includes('actionnaire') || question.includes('בעל מניות')) {
+        persons.push('Actionnaire');
+    }
+    if (question.includes('société') || question.includes('חברה')) {
+        persons.push('Société');
+    }
+    if (question.includes('partenaire') || question.includes('שותף')) {
+        persons.push('Partenaire');
+    }
+    return [...new Set(persons)].length > 0 ? [...new Set(persons)] : ['Identifiez les personnes concernées'];
+}
+function extractFiscalOperations(question, concepts = []) {
+    const operations = [];
+    // Add concept-specific operations
+    concepts.forEach(concept => {
+        if (concept.nomFrancais.includes('distribution')) {
+            operations.push('Distribution de dividendes');
+        }
+        if (concept.nomFrancais.includes('vente')) {
+            operations.push('Vente d\'actions');
+        }
+        if (concept.nomFrancais.includes('prêt')) {
+            operations.push('Prêt accordé');
+        }
+    });
+    // Original logic
+    if (question.includes('distribution') || question.includes('חלוקה')) {
+        operations.push('Distribution de dividendes');
+    }
+    if (question.includes('vente') || question.includes('מכירה')) {
+        operations.push('Vente d\'actions');
+    }
+    if (question.includes('prêt') || question.includes('הלוואה')) {
+        operations.push('Prêt accordé');
+    }
+    if (question.includes('retrait') || question.includes('משיכה')) {
+        operations.push('Retrait de la société');
+    }
+    return [...new Set(operations)].length > 0 ? [...new Set(operations)] : ['Identifiez l\'opération fiscale'];
+}
+function identifyArticles(question, concepts = []) {
+    const articles = [];
+    // Add concept-specific articles
+    concepts.forEach(concept => {
+        if (concept.nomFrancais.includes('dividende')) {
+            articles.push('Section 125b');
+        }
+        if (concept.nomFrancais.includes('plus-value')) {
+            articles.push('Section 88');
+        }
+        if (concept.nomFrancais.includes('société')) {
+            articles.push('Section 126');
+        }
+        if (concept.nomFrancais.includes('prêt')) {
+            articles.push('Section 3(9)');
+        }
+    });
+    // Original logic
+    if (question.includes('dividende')) {
+        articles.push('Section 125b');
+    }
+    if (question.includes('plus-value')) {
+        articles.push('Section 88');
+    }
+    if (question.includes('société')) {
+        articles.push('Section 126');
+    }
+    if (question.includes('prêt')) {
+        articles.push('Section 3(9)');
+    }
+    return [...new Set(articles)].length > 0 ? [...new Set(articles)] : ['Identifiez les articles applicables'];
+}
+function extractDates(question) {
+    const dates = [];
+    const datePattern = /\d{1,2}\/\d{1,2}\/\d{4}|\d{4}|\d{1,2}\.\d{1,2}\.\d{4}/g;
+    const matches = question.match(datePattern);
+    if (matches) {
+        dates.push(...matches);
+    }
+    return dates.length > 0 ? dates : ['Identifiez les dates importantes'];
+}
+function extractAmounts(question) {
+    const amounts = [];
+    const amountPattern = /\$?\s*\d+[,\d]*\s*₪?|\d+\s*%/g;
+    const matches = question.match(amountPattern);
+    if (matches) {
+        amounts.push(...matches);
+    }
+    return amounts.length > 0 ? amounts : ['Identifiez les montants'];
+}
+function extractSubQuestions(question) {
+    const subQuestions = [];
+    if (question.includes('?')) {
+        const parts = question.split('?');
+        for (let i = 0; i < parts.length - 1; i++) {
+            if (parts[i].trim()) {
+                subQuestions.push(parts[i].trim() + '?');
+            }
         }
     }
-    return facts.length > 0 ? facts : ['Identifiez les personnes et entités impliquées', 'Identifiez les montants et pourcentages'];
-}
-function suggestRules(keywords) {
-    const rules = [];
-    if (keywords.some(k => k.includes('דיבידנד') || k.includes('dividende'))) {
-        rules.push('Règles de taxation des dividendes');
+    if (question.includes('1.') || question.includes('2.') || question.includes('3.')) {
+        const numberedParts = question.split(/\d+\./);
+        for (let i = 1; i < numberedParts.length; i++) {
+            if (numberedParts[i].trim()) {
+                subQuestions.push(numberedParts[i].trim());
+            }
+        }
     }
-    if (keywords.some(k => k.includes('מס חברות') || k.includes('impôt'))) {
-        rules.push('Taux d\'imposition des sociétés');
-    }
-    if (keywords.some(k => k.includes('תושב ישראל') || k.includes('résident'))) {
-        rules.push('Règles de résidence fiscale');
-    }
-    return rules.length > 0 ? rules : ['Règles générales d\'imposition'];
-}
-function identifyMissingElements(answer, question) {
-    const missing = [];
-    const lowerAnswer = answer.toLowerCase();
-    if (!lowerAnswer.includes('règle') && !lowerAnswer.includes('loi') && !lowerAnswer.includes('article')) {
-        missing.push('Règle fiscale ou article de loi');
-    }
-    if (!lowerAnswer.includes('conclusion') && !lowerAnswer.includes('donc') && !lowerAnswer.includes('en conséquence')) {
-        missing.push('Conclusion claire');
-    }
-    if (!/\d+%/.test(answer) && question.toLowerCase().includes('calcul')) {
-        missing.push('Taux ou montant d\'imposition');
-    }
-    if (answer.split('\n').filter(l => l.trim()).length > 15) {
-        missing.push('Respect de la limite de 15 lignes');
-    }
-    return missing;
+    return subQuestions.length > 0 ? subQuestions : ['Analysez tous les aspects de la question'];
 }
 function identifyPositivePoints(answer) {
-    const positive = [];
-    if (answer.toLowerCase().includes('donc') || answer.toLowerCase().includes('en conséquence')) {
-        positive.push('Présence d\'une conclusion');
+    const points = [];
+    if (answer.length > 50) {
+        points.push('Réponse suffisamment développée');
     }
-    if (/\d+%/.test(answer)) {
-        positive.push('Mention de taux ou montants');
+    if (answer.includes('donc') || answer.includes('par conséquent')) {
+        points.push('Présence d\'une conclusion');
     }
-    if (answer.length > 100) {
-        positive.push('Réponse développée');
+    if (answer.includes('%') || answer.includes('taux')) {
+        points.push('Taux mentionné');
     }
-    return positive.length > 0 ? positive : ['Réponse fournie'];
+    return points.length > 0 ? points : ['Réponse fournie'];
 }
-function identifyLegalIssues(answer) {
+function identifyMissingElements(answer) {
+    const missing = [];
+    if (!answer.includes('₪') && !answer.includes('$') && !/\d+/.test(answer)) {
+        missing.push('Montant non indiqué');
+    }
+    if (!answer.includes('%') && !answer.includes('taux')) {
+        missing.push('Taux d\'imposition non indiqué');
+    }
+    if (!answer.includes('section') && !answer.includes('סעיף')) {
+        missing.push('Référence légale non citée');
+    }
+    return missing.length > 0 ? missing : ['Vérifiez que tous les éléments sont présents'];
+}
+function identifyLegalTaxIssues(answer) {
     const issues = [];
-    const lowerAnswer = answer.toLowerCase();
-    if (!lowerAnswer.includes('article') && !lowerAnswer.includes('loi')) {
-        issues.push('Vérifier les articles de loi applicables');
+    if (answer.includes('toujours') || answer.includes('jamais')) {
+        issues.push('Attention aux termes absolus - vérifiez les exceptions');
     }
-    if (!lowerAnswer.includes('source') && !lowerAnswer.includes('référence')) {
-        issues.push('Ajouter des références aux sources');
+    if (answer.length < 30) {
+        issues.push('Réponse très courte - risque d\'incomplétude');
     }
-    return issues;
+    return issues.length > 0 ? issues : ['Vérifiez les règles applicables'];
 }
-function generateImprovementAdvice(answer, question) {
+function correctLanguage(answer) {
+    let corrected = answer;
+    corrected = corrected.replace(/\.+/g, '.');
+    corrected = corrected.replace(/,\s*,/g, ',');
+    return corrected;
+}
+function generateImprovementAdvice(answer) {
     const advice = [];
-    const lineCount = (0, documentService_1.countLines)(answer);
+    const lineCount = countLines(answer);
     if (lineCount.exceedsLimit) {
         advice.push('Réduire la réponse à 15 lignes maximum');
     }
-    if (!answer.includes('\n')) {
-        advice.push('Structurer la réponse en paragraphes');
+    if (answer.split(' ').length < 20) {
+        advice.push('Réponse trop courte - développez davantage');
     }
-    advice.push('Utiliser la structure : Fait → Règle → Application → Conclusion');
-    return advice;
+    return advice.length > 0 ? advice : ['Utilisez la structure : Fait → Règle → Application → Conclusion'];
 }
-function generateChecklist() {
+function generateFinalChecklist() {
     return [
-        'Toutes les sous-questions sont traitées',
-        'Les faits importants sont mentionnés',
-        'La règle fiscale est indiquée',
-        'L\'application au cas est claire',
-        'La conclusion est présente',
-        'Les sources sont citées',
-        'La réponse fait moins de 15 lignes'
+        'Répond à la question posée',
+        'Contribuable correct',
+        'Événement fiscal identifié',
+        'Montant imposable',
+        'Source de revenu',
+        'Taux d\'imposition',
+        'Moment d\'imposition',
+        'Sources citées',
+        'Conclusion présente',
+        'Moins de 15 lignes'
     ];
 }
-function generateFinalChecklist(answer) {
-    const checklist = generateChecklist();
-    const lineCount = (0, documentService_1.countLines)(answer);
-    if (lineCount.exceedsLimit) {
-        checklist[6] = '❌ La réponse dépasse 15 lignes';
+function calculateScore(answer) {
+    let score = 50; // Start at 50 (base score)
+    // Check if sources are cited - CRITICAL
+    const hasSources = answer.includes('section') || answer.includes('סעיף') || answer.includes('page');
+    if (!hasSources) {
+        // Major penalty: no sources = maximum score 50
+        return { category: 'incomplete', numeric: 50 };
     }
-    else {
-        checklist[6] = '✓ La réponse fait moins de 15 lignes';
+    // Check if source appears to be invented (generic references without specific sections)
+    const hasSpecificSource = answer.match(/section\s+\d+|סעיף\s+\d+|page\s+\d+/i);
+    if (!hasSpecificSource) {
+        // Penalty: generic reference without specific section
+        score = Math.min(score, 60);
     }
-    return checklist;
+    // Other scoring factors
+    if (answer.length > 50)
+        score += 10;
+    if (answer.includes('%') || answer.includes('taux'))
+        score += 10;
+    if (answer.includes('section') || answer.includes('סעיף'))
+        score += 10;
+    if (answer.includes('donc') || answer.includes('par conséquent'))
+        score += 10;
+    const lineCount = countLines(answer);
+    if (!lineCount.exceedsLimit)
+        score += 10;
+    // Cap at 100
+    score = Math.min(score, 100);
+    if (score >= 90)
+        return { category: 'complete', numeric: score };
+    if (score >= 70)
+        return { category: 'almost_complete', numeric: score };
+    if (score >= 50)
+        return { category: 'needs_improvement', numeric: score };
+    return { category: 'incomplete', numeric: score };
+}
+function checkRespondsToQuestion(answer, question) {
+    return answer.length > 30;
+}
+function checkSubQuestions(answer, question) {
+    return answer.length > 50;
+}
+function checkTaxpayerIdentified(answer) {
+    return answer.includes('imposé') || answer.includes('taxé') || answer.includes('חייב');
+}
+function checkFiscalEvent(answer) {
+    return answer.includes('événement') || answer.includes('taxation') || answer.includes('אירוע');
+}
+function checkTaxableAmount(answer) {
+    return /\d+/.test(answer) || answer.includes('₪') || answer.includes('$');
+}
+function checkIncomeSource(answer) {
+    return answer.includes('source') || answer.includes('מקור') || answer.includes('revenu');
+}
+function checkTaxRate(answer) {
+    return answer.includes('%') || answer.includes('taux') || answer.includes('שיעור');
+}
+function checkTaxTiming(answer) {
+    return answer.includes('moment') || answer.includes('date') || answer.includes('מועד');
+}
+function checkSourcesCited(answer) {
+    return answer.includes('section') || answer.includes('סעיף') || answer.includes('page');
+}
+function checkConclusion(answer) {
+    return answer.includes('donc') || answer.includes('par conséquent') || answer.includes('לכן');
+}
+function checkReasoningStructure(answer) {
+    return {
+        facts: answer.length > 30,
+        rule: answer.includes('section') || answer.includes('סעיף'),
+        application: answer.includes('donc') || answer.includes('par conséquent'),
+        conclusion: answer.includes('donc') || answer.includes('par conséquent')
+    };
 }

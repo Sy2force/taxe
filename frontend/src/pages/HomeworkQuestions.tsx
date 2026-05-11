@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, BookOpen, Trash2, CheckCircle, Clock, KanbanSquare, MoreHorizontal, Edit, FileText } from 'lucide-react';
-import { analysisApi, type HomeworkQuestion } from '../lib/api';
+import { Plus, BookOpen, Trash2, CheckCircle, Clock, KanbanSquare, MoreHorizontal, Edit, FileText, ClipboardCheck, Clipboard } from 'lucide-react';
+import { analysisApi, type HomeworkQuestion, detectQuestions } from '../lib/api';
 
 const statusConfig = {
   not_started: { label: 'À commencer', color: 'bg-slate-500/10 text-slate-400 border-slate-500/30', icon: Clock },
@@ -8,6 +8,7 @@ const statusConfig = {
   draft_written: { label: 'Brouillon rédigé', color: 'bg-amber-500/10 text-amber-400 border-amber-500/30', icon: Edit },
   corrected: { label: 'Corrigé', color: 'bg-purple-500/10 text-purple-400 border-purple-500/30', icon: CheckCircle },
   ready_to_submit: { label: 'Prêt à soumettre', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30', icon: CheckCircle },
+  copied_to_document: { label: 'Copiée dans le document', color: 'bg-green-500/10 text-green-400 border-green-500/30', icon: CheckCircle },
 };
 
 interface StatusBadgeProps {
@@ -76,6 +77,8 @@ const QuestionCard = ({ question, selectedId, onSelect, onDelete }: QuestionCard
 export default function HomeworkQuestions() {
   const [questions, setQuestions] = useState<HomeworkQuestion[]>([]);
   const [selectedQuestion, setSelectedQuestion] = useState<HomeworkQuestion | null>(null);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [pastedText, setPastedText] = useState('');
   const hasLoaded = useRef(false);
 
   const loadQuestions = useCallback(async () => {
@@ -127,6 +130,46 @@ export default function HomeworkQuestions() {
     }
   };
 
+  const markAsCopied = async (id: number) => {
+    try {
+      await analysisApi.updateHomeworkQuestion(id, { 
+        copiedToDocument: true, 
+        copiedAt: new Date().toISOString(),
+        status: 'copied_to_document'
+      });
+      setQuestions(questions.map(q => q.id === id ? { ...q, copiedToDocument: true, copiedAt: new Date().toISOString(), status: 'copied_to_document' as const } : q));
+      if (selectedQuestion?.id === id) {
+        setSelectedQuestion({ ...selectedQuestion, copiedToDocument: true, copiedAt: new Date().toISOString(), status: 'copied_to_document' as const });
+      }
+    } catch (error) {
+      console.error('Failed to mark as copied:', error);
+    }
+  };
+
+  const handleImportFromPaste = async () => {
+    if (!pastedText.trim()) return;
+    
+    const detectedQuestions = detectQuestions(pastedText);
+    
+    if (detectedQuestions.length === 0) {
+      alert('Aucune question détectée dans le texte collé. Vérifiez le format.');
+      return;
+    }
+    
+    try {
+      for (let i = 0; i < detectedQuestions.length; i++) {
+        const newQuestion = await analysisApi.createHomeworkQuestion(questions.length + i + 1, detectedQuestions[i]);
+        setQuestions(prev => [...prev, newQuestion]);
+      }
+      setPastedText('');
+      setShowImportDialog(false);
+      alert(`${detectedQuestions.length} questions détectées et importées.`);
+    } catch (error) {
+      console.error('Failed to import questions:', error);
+      alert('Erreur lors de l\'import des questions.');
+    }
+  };
+
   const getQuestionsByStatus = (status: HomeworkQuestion['status']) => {
     return questions.filter(q => q.status === status);
   };
@@ -140,6 +183,13 @@ export default function HomeworkQuestions() {
               <h1 className="text-3xl font-bold text-text-primary mb-2">Questions de devoir</h1>
               <p className="text-text-secondary">Gérez vos 8 questions de devoir avec suivi style Kanban</p>
             </div>
+            <button
+              onClick={() => setShowImportDialog(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-semibold hover:from-emerald-600 hover:to-teal-600 transition-all shadow-lg"
+            >
+              <Clipboard size={18} />
+              Coller les questions
+            </button>
             <button
               onClick={() => createNewQuestion(questions.length + 1)}
               className="flex items-center gap-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-4 py-2 rounded-xl font-semibold hover:from-blue-600 hover:to-cyan-600 transition-all shadow-lg"
@@ -282,22 +332,73 @@ export default function HomeworkQuestions() {
               {/* Status Update */}
               <div className="lg:col-span-2">
                 <label className="block text-sm font-medium text-text-primary mb-2">Statut</label>
-                <select
-                  value={selectedQuestion.status}
-                  onChange={(e) => updateQuestion({ status: e.target.value as HomeworkQuestion['status'] })}
-                  className="w-full px-4 py-3 bg-surface-input border border-border rounded-xl text-text-primary focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
-                >
-                  <option value="not_started">À commencer</option>
-                  <option value="sources_found">Sources trouvées</option>
-                  <option value="draft_written">Brouillon rédigé</option>
-                  <option value="corrected">Corrigé</option>
-                  <option value="ready_to_submit">Prêt à soumettre</option>
-                </select>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(statusConfig).map(([status, config]) => (
+                    <button
+                      key={status}
+                      onClick={() => updateQuestion({ status: status as HomeworkQuestion['status'] })}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                        selectedQuestion.status === status
+                          ? config.color
+                          : 'bg-surface-input border-border text-text-secondary hover:border-blue-500/30'
+                      }`}
+                    >
+                      {config.label}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => markAsCopied(selectedQuestion.id)}
+                    disabled={selectedQuestion.copiedToDocument}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      selectedQuestion.copiedToDocument
+                        ? 'bg-green-500/20 text-green-400 border-green-500/30 cursor-not-allowed'
+                        : 'bg-surface-input border-border text-text-secondary hover:border-blue-500/30'
+                    }`}
+                  >
+                    <ClipboardCheck size={14} />
+                    Marquer comme collée
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* Import Dialog */}
+      {showImportDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-surface-card border border-border rounded-2xl p-6 max-w-2xl w-full mx-4">
+            <h3 className="text-xl font-semibold text-text-primary mb-3">Coller les questions du devoir</h3>
+            <p className="text-text-secondary mb-4">Collez le texte contenant les questions. Le système détectera automatiquement les questions numérotées.</p>
+            <textarea
+              value={pastedText}
+              onChange={(e) => setPastedText(e.target.value)}
+              placeholder="Collez les questions ici...
+Exemple:
+1. Qu'est-ce que...
+2. Comment calculer..."
+              rows={10}
+              className="w-full px-4 py-3 bg-surface-input border border-border rounded-xl text-text-primary placeholder-text-tertiary focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 resize-none transition-all"
+            />
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => setShowImportDialog(false)}
+                className="flex-1 px-4 py-2 bg-surface-input border border-border text-text-primary rounded-lg hover:bg-surface-card transition-all"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleImportFromPaste}
+                disabled={!pastedText.trim()}
+                className="flex-1 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Détecter et importer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -44,6 +44,7 @@ export default function FinalVerification() {
     switch (status) {
       case 'ready_to_submit': return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
       case 'corrected': return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
+      case 'copied_to_document': return 'bg-green-500/20 text-green-400 border-green-500/30';
       case 'draft_written': return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
       case 'sources_found': return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
       default: return 'bg-slate-500/20 text-slate-400 border-slate-500/30';
@@ -54,6 +55,7 @@ export default function FinalVerification() {
     switch (status) {
       case 'ready_to_submit': return 'Prête à rendre';
       case 'corrected': return 'Corrigée';
+      case 'copied_to_document': return 'Copiée dans le document';
       case 'draft_written': return 'Brouillon rédigé';
       case 'sources_found': return 'Sources trouvées';
       default: return 'Non commencée';
@@ -61,10 +63,11 @@ export default function FinalVerification() {
   };
 
   const overallProgress = () => {
-    const completed = questions.filter(q => q.status === 'ready_to_submit' || q.status === 'corrected').length;
+    const completed = questions.filter(q => q.status === 'ready_to_submit' || q.status === 'corrected' || q.status === 'copied_to_document').length;
     const needsWork = questions.filter(q => q.status === 'draft_written' || q.status === 'sources_found').length;
     const notStarted = questions.filter(q => q.status === 'not_started').length;
-    return { completed, needsWork, notStarted };
+    const copied = questions.filter(q => q.copiedToDocument).length;
+    return { completed, needsWork, notStarted, copied };
   };
 
   if (loading) {
@@ -115,10 +118,14 @@ export default function FinalVerification() {
             </div>
             Progression globale
           </h2>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-4 gap-4">
             <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-5">
               <div className="text-3xl font-bold text-emerald-400">{progress.completed}</div>
               <div className="text-sm text-emerald-400/80">Prêt</div>
+            </div>
+            <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-5">
+              <div className="text-3xl font-bold text-green-400">{progress.copied}</div>
+              <div className="text-sm text-green-400/80">Copié</div>
             </div>
             <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-5">
               <div className="text-3xl font-bold text-amber-400">{progress.needsWork}</div>
@@ -133,77 +140,87 @@ export default function FinalVerification() {
 
             {/* Questions List */}
             <div className="bg-surface-card border border-border rounded-2xl p-6 mb-8">
-          <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
-              <FileCheck className="h-4 w-4 text-purple-400" />
-            </div>
-            Statut des questions
-          </h2>
-          <div className="space-y-3">
-            {questions.map((question) => {
-              const hasSources = question.sources.length > 0;
-              const hasAnswer = question.draftAnswer.length > 0 || question.correctedAnswer.length > 0;
-              const lineCount = question.draftAnswer.split('\n').length;
-              return (
-                <div key={question.id} className="bg-surface-input border border-border rounded-xl p-4 hover:border-blue-500/30 transition-all">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-3">
-                      <span className="font-semibold text-text-primary">Question {question.id}</span>
-                      <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(question.status)}`}>
-                        {getStatusLabel(question.status)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-4 gap-4 text-sm">
-                    <div className="flex items-center gap-2">
-                      {hasSources ? (
-                        <CheckCircle size={16} className="text-emerald-400" />
-                      ) : (
-                        <AlertTriangle size={16} className="text-amber-400" />
-                      )}
-                      <span className={hasSources ? 'text-emerald-400' : 'text-amber-400'}>
-                        Sources
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {hasAnswer ? (
-                        <CheckCircle size={16} className="text-emerald-400" />
-                      ) : (
-                        <AlertTriangle size={16} className="text-amber-400" />
-                      )}
-                      <span className={hasAnswer ? 'text-emerald-400' : 'text-amber-400'}>
-                        Réponse
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {hasAnswer && lineCount <= 15 ? (
-                        <CheckCircle size={16} className="text-emerald-400" />
-                      ) : hasAnswer && lineCount > 15 ? (
-                        <AlertTriangle size={16} className="text-red-400" />
-                      ) : (
-                        <span className="text-text-tertiary">-</span>
-                      )}
-                      <span className={hasAnswer && lineCount <= 15 ? 'text-emerald-400' : hasAnswer && lineCount > 15 ? 'text-red-400' : 'text-text-tertiary'}>
-                        {hasAnswer ? `${lineCount} lignes` : '-'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {question.status === 'ready_to_submit' || question.status === 'corrected' ? (
-                        <CheckCircle size={16} className="text-emerald-400" />
-                      ) : question.status === 'draft_written' || question.status === 'sources_found' ? (
-                        <AlertTriangle size={16} className="text-amber-400" />
-                      ) : (
-                        <span className="text-text-tertiary">-</span>
-                      )}
-                      <span className={question.status === 'ready_to_submit' || question.status === 'corrected' ? 'text-emerald-400' : question.status === 'draft_written' || question.status === 'sources_found' ? 'text-amber-400' : 'text-text-tertiary'}>
-                        Qualité
-                      </span>
-                    </div>
-                  </div>
+              <h2 className="text-lg font-semibold text-text-primary mb-4 flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
+                  <FileCheck className="h-4 w-4 text-purple-400" />
                 </div>
-              );
-            })}
-          </div>
+                Statut des questions
+              </h2>
+              <div className="space-y-3">
+                {questions.map((question) => {
+                  const hasSources = question.sources.length > 0;
+                  const hasAnswer = question.draftAnswer.length > 0 || question.correctedAnswer.length > 0;
+                  const lineCount = question.draftAnswer.split('\n').length;
+                  return (
+                    <div key={question.id} className="bg-surface-input border border-border rounded-xl p-4 hover:border-blue-500/30 transition-all">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <span className="font-semibold text-text-primary">Question {question.id}</span>
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(question.status)}`}>
+                            {getStatusLabel(question.status)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-5 gap-4 text-sm">
+                        <div className="flex items-center gap-2">
+                          {hasSources ? (
+                            <CheckCircle size={16} className="text-emerald-400" />
+                          ) : (
+                            <AlertTriangle size={16} className="text-amber-400" />
+                          )}
+                          <span className={hasSources ? 'text-emerald-400' : 'text-amber-400'}>
+                            Sources
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {hasAnswer ? (
+                            <CheckCircle size={16} className="text-emerald-400" />
+                          ) : (
+                            <AlertTriangle size={16} className="text-amber-400" />
+                          )}
+                          <span className={hasAnswer ? 'text-emerald-400' : 'text-amber-400'}>
+                            Réponse
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {hasAnswer && lineCount <= 15 ? (
+                            <CheckCircle size={16} className="text-emerald-400" />
+                          ) : hasAnswer && lineCount > 15 ? (
+                            <AlertTriangle size={16} className="text-red-400" />
+                          ) : (
+                            <span className="text-text-tertiary">-</span>
+                          )}
+                          <span className={hasAnswer && lineCount <= 15 ? 'text-emerald-400' : hasAnswer && lineCount > 15 ? 'text-red-400' : 'text-text-tertiary'}>
+                            {hasAnswer ? `${lineCount} lignes` : '-'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {question.copiedToDocument ? (
+                            <CheckCircle size={16} className="text-green-400" />
+                          ) : (
+                            <AlertTriangle size={16} className="text-amber-400" />
+                          )}
+                          <span className={question.copiedToDocument ? 'text-green-400' : 'text-amber-400'}>
+                            Copié
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {question.status === 'ready_to_submit' || question.status === 'corrected' || question.status === 'copied_to_document' ? (
+                            <CheckCircle size={16} className="text-emerald-400" />
+                          ) : question.status === 'draft_written' || question.status === 'sources_found' ? (
+                            <AlertTriangle size={16} className="text-amber-400" />
+                          ) : (
+                            <span className="text-text-tertiary">-</span>
+                          )}
+                          <span className={question.status === 'ready_to_submit' || question.status === 'corrected' || question.status === 'copied_to_document' ? 'text-emerald-400' : question.status === 'draft_written' || question.status === 'sources_found' ? 'text-amber-400' : 'text-text-tertiary'}>
+                            {question.status === 'copied_to_document' ? 'À vérifier' : question.status === 'ready_to_submit' ? 'Prêt' : question.status === 'corrected' ? 'Corrigé' : question.status === 'draft_written' ? 'Brouillon' : question.status === 'sources_found' ? 'Sources' : '-'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Final Checklist */}

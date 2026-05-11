@@ -1,38 +1,29 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.ensureUploadDir = ensureUploadDir;
-exports.extractTextFromFile = extractTextFromFile;
-exports.saveDocument = saveDocument;
-exports.getDocument = getDocument;
-exports.getAllDocuments = getAllDocuments;
-exports.deleteDocument = deleteDocument;
-exports.searchInDocuments = searchInDocuments;
-exports.countLines = countLines;
-const pdf_parse_1 = __importDefault(require("pdf-parse"));
-const mammoth_1 = __importDefault(require("mammoth"));
-const promises_1 = __importDefault(require("fs/promises"));
-const path_1 = __importDefault(require("path"));
+import pdf from 'pdf-parse';
+import mammoth from 'mammoth';
+import fs from 'fs/promises';
+import path from 'path';
+import { spawn } from 'child_process';
+import { searchConcepts } from './taxKnowledgeBase.js';
 const documents = new Map();
-const UPLOAD_DIR = path_1.default.join(__dirname, '../../uploads');
-async function ensureUploadDir() {
+const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
+export async function ensureUploadDir() {
     try {
-        await promises_1.default.access(UPLOAD_DIR);
+        await fs.access(UPLOAD_DIR);
     }
     catch {
-        await promises_1.default.mkdir(UPLOAD_DIR, { recursive: true });
+        await fs.mkdir(UPLOAD_DIR, { recursive: true });
     }
 }
-async function extractTextFromFile(file) {
+export async function extractTextFromFile(file) {
     const filePath = file.path;
-    const extension = path_1.default.extname(file.originalname).toLowerCase();
+    const extension = path.extname(file.originalname).toLowerCase();
     switch (extension) {
         case '.pdf':
             return await extractFromPDF(filePath);
         case '.docx':
             return await extractFromDocx(filePath);
+        case '.doc':
+            return await extractFromDoc(filePath);
         case '.txt':
             return await extractFromTxt(filePath);
         default:
@@ -40,63 +31,198 @@ async function extractTextFromFile(file) {
     }
 }
 async function extractFromPDF(filePath) {
-    const dataBuffer = await promises_1.default.readFile(filePath);
-    const data = await (0, pdf_parse_1.default)(dataBuffer);
-    return { text: data.text, pages: data.numpages };
+    let data;
+    try {
+        const dataBuffer = await fs.readFile(filePath);
+        data = await pdf(dataBuffer);
+    }
+    catch {
+        throw new Error('Impossible de lire ce PDF. Il est peut-être protégé, corrompu ou mal encodé.');
+    }
+    const text = data.text.trim();
+    if (text.length === 0) {
+        throw new Error('Ce PDF semble être scanné ou composé d\'images. Aucun texte sélectionnable n\'a été trouvé. Utilisez un PDF texte ou ajoutez une fonction OCR.');
+    }
+    return { text, pages: data.numpages };
 }
 async function extractFromDocx(filePath) {
-    const dataBuffer = await promises_1.default.readFile(filePath);
-    const result = await mammoth_1.default.extractRawText({ buffer: dataBuffer });
-    return { text: result.value };
+    try {
+        const dataBuffer = await fs.readFile(filePath);
+        const result = await mammoth.extractRawText({ buffer: dataBuffer });
+        const text = result.value.trim();
+        if (text.length === 0) {
+            throw new Error('Le fichier DOCX a été ouvert, mais aucun texte exploitable n\'a été trouvé.');
+        }
+        return { text };
+    }
+    catch (error) {
+        throw new Error('Impossible de lire ce fichier DOCX. Il est peut-être protégé ou corrompu.');
+    }
 }
 async function extractFromTxt(filePath) {
-    const text = await promises_1.default.readFile(filePath, 'utf-8');
-    return { text };
+    try {
+        const text = await fs.readFile(filePath, 'utf-8');
+        const trimmedText = text.trim();
+        if (trimmedText.length === 0) {
+            throw new Error('Le fichier TXT est vide.');
+        }
+        return { text: trimmedText };
+    }
+    catch (error) {
+        throw new Error('Impossible de lire ce fichier TXT. Il est peut-être corrompu ou mal encodé.');
+    }
 }
-function saveDocument(document) {
+async function extractFromDoc(filePath) {
+    const libreOfficeCommands = [
+        'soffice',
+        'libreoffice',
+        '/Applications/LibreOffice.app/Contents/MacOS/soffice',
+    ];
+    let libreOfficePath = null;
+    for (const cmd of libreOfficeCommands) {
+        try {
+            await fs.access(cmd);
+            libreOfficePath = cmd;
+            break;
+        }
+        catch {
+            continue;
+        }
+    }
+    if (!libreOfficePath) {
+        throw new Error('LibreOffice est nécessaire pour convertir les anciens fichiers .doc. Installez LibreOffice ou importez une version .docx.');
+    }
+    const tempDir = path.join(UPLOAD_DIR, 'temp_conversion');
+    await fs.mkdir(tempDir, { recursive: true });
+    const docxOutputPath = path.join(tempDir, path.basename(filePath, '.doc') + '.docx');
+    try {
+        await new Promise((resolve, reject) => {
+            const process = spawn(libreOfficePath, ['--headless', '--convert-to', 'docx', '--outdir', tempDir, filePath]);
+            process.on('close', (code) => {
+                if (code === 0)
+                    resolve();
+                else
+                    reject(new Error('La conversion du fichier .doc a échoué. Ouvrez-le avec Word ou LibreOffice puis enregistrez-le en .docx.'));
+            });
+            process.on('error', () => reject(new Error('La conversion du fichier .doc a échoué. Ouvrez-le avec Word ou LibreOffice puis enregistrez-le en .docx.')));
+        });
+        try {
+            await fs.access(docxOutputPath);
+        }
+        catch {
+            throw new Error('La conversion du fichier .doc a échoué. Ouvrez-le avec Word ou LibreOffice puis enregistrez-le en .docx.');
+        }
+        const dataBuffer = await fs.readFile(docxOutputPath);
+        const result = await mammoth.extractRawText({ buffer: dataBuffer });
+        const text = result.value.trim();
+        if (text.length === 0) {
+            throw new Error('Le fichier .doc a été converti, mais aucun texte exploitable n\'a été trouvé.');
+        }
+        await fs.rm(tempDir, { recursive: true, force: true });
+        return { text };
+    }
+    catch (error) {
+        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => { });
+        throw error;
+    }
+}
+export function saveDocument(document) {
     documents.set(document.id, document);
 }
-function getDocument(id) {
+export function getDocument(id) {
     return documents.get(id);
 }
-function getAllDocuments() {
+export function getAllDocuments() {
     return Array.from(documents.values());
 }
-function deleteDocument(id) {
+export function deleteDocument(id) {
     return documents.delete(id);
 }
-function searchInDocuments(query) {
+export function clearAllDocuments() {
+    documents.clear();
+}
+export function searchInDocuments(query) {
     const results = [];
     const keywords = query.toLowerCase().split(/\s+/);
+    // Search for related tax concepts
+    const relatedConcepts = searchConcepts(query);
+    const conceptKeywords = new Set();
+    relatedConcepts.forEach(concept => {
+        concept.motsClesFrancais.forEach(kw => conceptKeywords.add(kw.toLowerCase()));
+        concept.motsClesHebreu.forEach(kw => conceptKeywords.add(kw.toLowerCase()));
+    });
+    // Search through ALL documents and ALL lines to ensure full document coverage
     for (const [docId, doc] of documents) {
         const text = doc.content.toLowerCase();
         const lines = doc.content.split('\n');
+        // Iterate through ALL lines to cover the entire document (including 243 pages)
         for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].toLowerCase();
+            const line = lines[i];
+            const lineLower = line.toLowerCase();
             let matchScore = 0;
+            const matchedKeywords = [];
+            // Check original query keywords
             for (const keyword of keywords) {
-                if (line.includes(keyword)) {
-                    matchScore++;
+                if (lineLower.includes(keyword)) {
+                    matchScore += 1.5; // Higher weight for direct query matches
+                    matchedKeywords.push(keyword);
+                }
+            }
+            // Check concept-related keywords
+            for (const conceptKeyword of conceptKeywords) {
+                if (lineLower.includes(conceptKeyword) && !matchedKeywords.includes(conceptKeyword)) {
+                    matchScore += 1; // Lower weight for concept matches
+                    matchedKeywords.push(conceptKeyword);
                 }
             }
             if (matchScore > 0) {
                 const beforeContext = lines[Math.max(0, i - 2)];
                 const afterContext = lines[Math.min(lines.length - 1, i + 2)];
+                // Determine reason for relevance
+                let reasonForRelevance = '';
+                if (matchedKeywords.length > 0) {
+                    reasonForRelevance = `Correspondance avec: ${matchedKeywords.slice(0, 3).join(', ')}`;
+                    if (matchedKeywords.length > 3) {
+                        reasonForRelevance += '...';
+                    }
+                }
+                if (relatedConcepts.length > 0) {
+                    const conceptNames = relatedConcepts.slice(0, 2).map(c => c.nomFrancais).join(', ');
+                    if (reasonForRelevance) {
+                        reasonForRelevance += `. Concepts liés: ${conceptNames}`;
+                    }
+                    else {
+                        reasonForRelevance = `Concepts liés: ${conceptNames}`;
+                    }
+                }
                 results.push({
                     keyword: query,
                     extract: lines[i],
                     beforeContext,
                     afterContext,
-                    relevanceScore: matchScore / keywords.length,
+                    relevanceScore: matchScore / (keywords.length + conceptKeywords.size),
                     documentId: docId,
-                    documentName: doc.name
+                    documentName: doc.name,
+                    page: doc.type === 'pdf' ? estimatePage(i, lines.length, doc.pages) : undefined,
+                    matchedConcepts: relatedConcepts.length > 0 ? relatedConcepts.slice(0, 2) : undefined,
+                    reasonForRelevance
                 });
             }
         }
     }
-    return results.sort((a, b) => b.relevanceScore - a.relevanceScore);
+    // Sort by relevance score and deduplicate similar results
+    return results
+        .sort((a, b) => b.relevanceScore - a.relevanceScore)
+        .filter((result, index, self) => index === self.findIndex(r => r.extract === result.extract));
 }
-function countLines(text) {
+// Estimate page number based on line position
+function estimatePage(lineIndex, totalLines, totalPages) {
+    if (!totalPages)
+        return undefined;
+    const linesPerPage = totalLines / totalPages;
+    return Math.floor(lineIndex / linesPerPage) + 1;
+}
+export function countLines(text) {
     const lines = text.split('\n').filter(line => line.trim().length > 0).length;
     const words = text.split(/\s+/).filter(word => word.length > 0).length;
     const exceedsLimit = lines > 15;

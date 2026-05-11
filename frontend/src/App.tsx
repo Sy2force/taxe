@@ -1,48 +1,39 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
-import Landing from './pages/Landing';
-import Dashboard from './pages/Dashboard';
-import Upload from './pages/Upload';
-import Search from './pages/Search';
-import Question from './pages/Question';
-import Corrector from './pages/Corrector';
-import Declaration from './pages/Declaration';
-import Settings from './pages/Settings';
-import HomeworkQuestions from './pages/HomeworkQuestions';
-import UserGuide from './pages/UserGuide';
-import ProfessorInstructions from './pages/ProfessorInstructions';
-import FiscalGlossary from './pages/FiscalGlossary';
-import FinalVerification from './pages/FinalVerification';
+import BottomNav from './components/BottomNav';
+import ExercisePage from './pages/ExercisePage';
+import LawsPage from './pages/LawsPage';
+import AnswersPage from './pages/AnswersPage';
+import VerificationPage from './pages/VerificationPage';
+import FinalCheckPage from './pages/FinalCheckPage';
 
 function App() {
   return (
     <Router>
-      <div className="min-h-screen bg-background-primary">
+      <div className="h-screen flex flex-col" style={{ background: '#09090b' }}>
         <Header />
-        <div className="flex">
+        <div className="flex flex-1 overflow-hidden">
           <Sidebar />
-          <main className="flex-1 overflow-auto">
+          {/* main scrolls independently; pb-16 on mobile for BottomNav space */}
+          <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
             <Routes>
-              <Route path="/" element={<Landing />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/upload" element={<Upload />} />
-              <Route path="/search" element={<Search />} />
-              <Route path="/question" element={<Question />} />
-              <Route path="/corrector" element={<Corrector />} />
-              <Route path="/declaration" element={<Declaration />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/homework" element={<HomeworkQuestions />} />
-              <Route path="/guide" element={<UserGuide />} />
-              <Route path="/instructions" element={<ProfessorInstructions />} />
-              <Route path="/glossary" element={<FiscalGlossary />} />
-              <Route path="/verification" element={<FinalVerification />} />
+              <Route path="/" element={<Navigate to="/exercise" replace />} />
+              <Route path="/exercise" element={<ExercisePage />} />
+              <Route path="/laws" element={<LawsPage />} />
+              <Route path="/answers" element={<AnswersPage />} />
+              <Route path="/verification" element={<VerificationPage />} />
+              <Route path="/final-check" element={<FinalCheckPage />} />
+              <Route path="*" element={<Navigate to="/exercise" replace />} />
             </Routes>
           </main>
         </div>
+        {/* Bottom tab bar — mobile only */}
+        <BottomNav />
       </div>
     </Router>
   );
 }
 
 export default App;
+

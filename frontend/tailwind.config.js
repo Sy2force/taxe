@@ -8,27 +8,30 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Premium dark theme palette
+        // Apple-style zinc dark palette
         background: {
-          primary: '#0B1020',
-          secondary: '#111827',
-          tertiary: '#1F2937',
+          primary: '#09090b',   // zinc-950
+          secondary: '#111113', // slightly lighter
+          tertiary: '#18181b',  // zinc-900
         },
         surface: {
-          card: '#1F2937',
-          cardHover: '#374151',
-          input: '#111827',
+          card: 'rgba(24,24,27,0.8)',    // zinc-900 glass
+          cardHover: 'rgba(39,39,42,0.9)',
+          input: 'rgba(18,18,20,0.9)',
+          elevated: 'rgba(39,39,42,0.95)',
         },
         border: {
-          DEFAULT: 'rgba(255,255,255,0.08)',
-          hover: 'rgba(255,255,255,0.12)',
-          focus: 'rgba(59, 130, 246, 0.5)',
+          DEFAULT: 'rgba(255,255,255,0.07)',
+          hover: 'rgba(255,255,255,0.11)',
+          focus: 'rgba(99,102,241,0.5)',
+          subtle: 'rgba(255,255,255,0.04)',
         },
         text: {
-          primary: '#F9FAFB',
-          secondary: '#9CA3AF',
-          tertiary: '#6B7280',
-          muted: '#4B5563',
+          primary: '#f4f4f5',    // zinc-100
+          secondary: '#a1a1aa',  // zinc-400
+          tertiary: '#71717a',   // zinc-500
+          muted: '#52525b',      // zinc-600
+          inverse: '#09090b',
         },
         // Premium accent colors
         navy: {

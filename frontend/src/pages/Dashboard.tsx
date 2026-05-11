@@ -38,12 +38,27 @@ export default function Dashboard() {
     }
   }, [loadDocuments, loadQuestions]);
 
-  const handleNewSession = () => {
-    localStorage.clear();
-    setDocuments([]);
-    setQuestions([]);
-    setShowResetDialog(false);
-    window.location.reload();
+  const handleNewSession = async () => {
+    try {
+      // Call backend API to reset all data
+      await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5050'}/api/reset-all`, {
+        method: 'POST',
+      });
+      
+      // Clear localStorage
+      localStorage.clear();
+      
+      // Reset state
+      setDocuments([]);
+      setQuestions([]);
+      setShowResetDialog(false);
+      
+      // Reload page
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to reset session:', error);
+      alert('Erreur lors de la réinitialisation. Veuillez réessayer.');
+    }
   };
 
   const getHomeworkStats = () => {
@@ -51,9 +66,10 @@ export default function Dashboard() {
     const analyzed = questions.filter(q => q.status !== 'not_started').length;
     const hasSources = questions.filter(q => q.sources.length > 0).length;
     const hasDraft = questions.filter(q => q.draftAnswer.length > 0).length;
-    const ready = questions.filter(q => q.status === 'ready_to_submit').length;
+    const ready = questions.filter(q => q.status === 'ready_to_submit' || q.status === 'copied_to_document').length;
+    const copied = questions.filter(q => q.copiedToDocument).length;
     const progress = total > 0 ? Math.round((ready / total) * 100) : 0;
-    return { total, analyzed, hasSources, hasDraft, ready, progress };
+    return { total, analyzed, hasSources, hasDraft, ready, copied, progress };
   };
 
   const stats = getHomeworkStats();
@@ -135,7 +151,7 @@ export default function Dashboard() {
         )}
 
         {/* Quick Stats - Homework Progress */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
           <div className="bg-surface-card border border-border rounded-xl p-5">
             <div className="flex items-center justify-between mb-2">
               <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
@@ -148,7 +164,7 @@ export default function Dashboard() {
           </div>
           <div className="bg-surface-card border border-border rounded-xl p-5">
             <div className="text-2xl font-bold text-text-primary">{stats.total}</div>
-            <div className="text-sm text-text-secondary">Questions ajoutées</div>
+            <div className="text-sm text-text-secondary">Questions détectées</div>
           </div>
           <div className="bg-surface-card border border-border rounded-xl p-5">
             <div className="text-2xl font-bold text-text-primary">{stats.analyzed}</div>
@@ -156,11 +172,15 @@ export default function Dashboard() {
           </div>
           <div className="bg-surface-card border border-border rounded-xl p-5">
             <div className="text-2xl font-bold text-text-primary">{stats.hasDraft}</div>
-            <div className="text-sm text-text-secondary">Brouillons corrigés</div>
+            <div className="text-sm text-text-secondary">Brouillons</div>
+          </div>
+          <div className="bg-surface-card border border-border rounded-xl p-5">
+            <div className="text-2xl font-bold text-text-primary">{stats.copied}</div>
+            <div className="text-sm text-text-secondary">Copiées</div>
           </div>
           <div className="bg-surface-card border border-border rounded-xl p-5">
             <div className="text-2xl font-bold text-text-primary">{stats.ready}</div>
-            <div className="text-sm text-text-secondary">Prêtes à rendre</div>
+            <div className="text-sm text-text-secondary">Prêtes</div>
           </div>
         </div>
 

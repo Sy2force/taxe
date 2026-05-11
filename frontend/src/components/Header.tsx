@@ -1,136 +1,177 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
-import { Search, Bell, User, Settings } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { RotateCcw, Loader2 } from 'lucide-react';
+
+const pageInfo: Record<string, { step: string; title: string }> = {
+  '/exercise':     { step: '01', title: 'Exercice' },
+  '/laws':         { step: '02', title: 'Lois fiscales' },
+  '/answers':      { step: '03', title: 'Réponses' },
+  '/verification': { step: '04', title: 'Vérification' },
+  '/final-check':  { step: '05', title: 'Document final' },
+};
 
 export default function Header() {
   const [backendStatus, setBackendStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const checkBackend = async () => {
+    const check = async () => {
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5050'}/health`);
-        if (response.ok) {
-          setBackendStatus('connected');
-        } else {
-          setBackendStatus('disconnected');
-        }
+        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5050'}/health`);
+        setBackendStatus(res.ok ? 'connected' : 'disconnected');
       } catch {
         setBackendStatus('disconnected');
       }
     };
-
-    checkBackend();
-    const interval = setInterval(checkBackend, 30000);
-    return () => clearInterval(interval);
+    check();
+    const t = setInterval(check, 30000);
+    return () => clearInterval(t);
   }, []);
 
-  const getPageTitle = () => {
-    const path = location.pathname;
-    const titles: Record<string, string> = {
-      '/': 'Accueil',
-      '/dashboard': 'Tableau de bord',
-      '/upload': 'Documents',
-      '/search': 'Recherche',
-      '/question': 'Analyse de Questions',
-      '/corrector': 'Correcteur',
-      '/homework': 'Gestion du Devoir',
-      '/instructions': 'Instructions du Professeur',
-      '/glossary': 'Glossaire Fiscal',
-      '/verification': 'Vérification Finale',
-      '/declaration': 'Déclaration IA',
-      '/guide': 'Mode d\'Emploi',
-      '/settings': 'Paramètres',
-    };
-    return titles[path] || 'Tableau de bord';
+  const handleNewSession = async () => {
+    setResetting(true);
+    try {
+      await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5050'}/api/reset-session`, { method: 'POST' });
+    } catch (e) { console.error('Reset failed', e); }
+    localStorage.clear();
+    setResetting(false);
+    setShowConfirm(false);
+    navigate('/exercise');
+    window.location.reload();
   };
 
-  const getBreadcrumbs = () => {
-    const path = location.pathname;
-    if (path === '/') return [];
-    if (path === '/dashboard') return [{ label: 'Tableau de bord', path: '/dashboard' }];
-    
-    const segments = path.split('/').filter(Boolean);
-    const breadcrumbs = segments.map((_, index) => {
-      const pathTo = '/' + segments.slice(0, index + 1).join('/');
-      return { label: getPageTitle(), path: pathTo };
-    });
-    
-    return [{ label: 'Tableau de bord', path: '/dashboard' }, ...breadcrumbs];
-  };
+  const info = pageInfo[location.pathname];
 
   return (
-    <header className="sticky top-0 z-50 bg-background-secondary/80 backdrop-blur-lg border-b border-border">
-      <div className="px-6 py-4">
-        <div className="flex items-center justify-between gap-6">
-          {/* Left Section: Breadcrumbs and Title */}
-          <div className="flex items-center gap-4 flex-1 min-w-0">
-            <div className="flex items-center gap-2 text-sm text-text-tertiary">
-              {getBreadcrumbs().map((crumb, index) => (
-                <div key={crumb.path} className="flex items-center gap-2">
-                  <span className={index === getBreadcrumbs().length - 1 ? 'text-text-primary font-medium' : ''}>
-                    {crumb.label}
-                  </span>
-                  {index < getBreadcrumbs().length - 1 && <span className="text-text-muted">/</span>}
-                </div>
-              ))}
-            </div>
-          </div>
+    <>
+      <header className="sticky top-0 z-50 h-12 flex items-center px-3 sm:px-6 gap-3" style={{
+        background: 'rgba(9,9,11,0.92)',
+        backdropFilter: 'blur(20px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+      }}>
 
-          {/* Center Section: Search */}
-          <div className="flex-1 max-w-md">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
-              <input
-                type="text"
-                placeholder="Rechercher..."
-                className="w-full pl-10 pr-4 py-2 bg-surface-input border border-border rounded-lg text-sm text-text-primary placeholder-text-tertiary focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all"
-              />
-            </div>
-          </div>
-
-          {/* Right Section: Status and Actions */}
-          <div className="flex items-center gap-4">
-            {/* Backend Status */}
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-card border border-border rounded-lg">
-              {backendStatus === 'connected' ? (
-                <>
-                  <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="text-xs font-medium text-emerald-400">Connecté</span>
-                </>
-              ) : backendStatus === 'disconnected' ? (
-                <>
-                  <div className="w-2 h-2 rounded-full bg-red-400" />
-                  <span className="text-xs font-medium text-red-400">Déconnecté</span>
-                </>
-              ) : (
-                <>
-                  <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
-                  <span className="text-xs font-medium text-yellow-400">Vérification...</span>
-                </>
-              )}
-            </div>
-
-            {/* Notifications */}
-            <button className="relative p-2 text-text-secondary hover:text-text-primary hover:bg-surface-card rounded-lg transition-colors">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-blue-500 rounded-full" />
-            </button>
-
-            {/* User Menu */}
-            <button className="flex items-center gap-2 p-2 hover:bg-surface-card rounded-lg transition-colors">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center">
-                <User className="w-4 h-4 text-white" />
-              </div>
-            </button>
-
-            {/* Settings */}
-            <button className="p-2 text-text-secondary hover:text-text-primary hover:bg-surface-card rounded-lg transition-colors">
-              <Settings className="w-5 h-5" />
-            </button>
+        {/* Logo mobile only (visible when no sidebar) */}
+        <div className="md:hidden flex items-center gap-2 flex-shrink-0">
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>
+            <span className="text-white text-[10px] font-bold">CF</span>
           </div>
         </div>
-      </div>
-    </header>
+
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          {info && (
+            <>
+              <span className="hidden sm:inline text-[11px] font-bold tracking-widest text-zinc-600 uppercase tabular-nums select-none">
+                {info.step}
+              </span>
+              <span className="hidden sm:inline text-zinc-700 select-none">/</span>
+              <span className="text-[13px] font-semibold text-text-primary tracking-tight truncate">
+                {info.title}
+              </span>
+            </>
+          )}
+          {!info && (
+            <span className="text-[13px] font-semibold text-text-primary tracking-tight truncate">
+              Correcteur Fiscalité Pro
+            </span>
+          )}
+        </div>
+
+        {/* Right side */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+
+          {/* Backend status — dot only on mobile, full pill on sm+ */}
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-medium" style={{
+            background: backendStatus === 'connected'
+              ? 'rgba(16,185,129,0.1)'
+              : backendStatus === 'disconnected'
+              ? 'rgba(239,68,68,0.1)'
+              : 'rgba(245,158,11,0.1)',
+            border: backendStatus === 'connected'
+              ? '1px solid rgba(16,185,129,0.25)'
+              : backendStatus === 'disconnected'
+              ? '1px solid rgba(239,68,68,0.25)'
+              : '1px solid rgba(245,158,11,0.25)',
+          }}>
+            {backendStatus === 'checking' ? (
+              <Loader2 className="w-2.5 h-2.5 animate-spin text-amber-400" />
+            ) : (
+              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                backendStatus === 'connected' ? 'bg-emerald-400' : 'bg-red-400'
+              }`} style={backendStatus === 'connected' ? { boxShadow: '0 0 6px rgba(16,185,129,0.8)' } : {}} />
+            )}
+            <span className={`hidden sm:inline ${
+              backendStatus === 'connected' ? 'text-emerald-400' :
+              backendStatus === 'disconnected' ? 'text-red-400' : 'text-amber-400'
+            }`}>
+              {backendStatus === 'connected' ? 'En ligne' : backendStatus === 'disconnected' ? 'Hors ligne' : '…'}
+            </span>
+          </div>
+
+          {/* Reset — icon only on mobile, icon+text on sm+ */}
+          <button
+            onClick={() => setShowConfirm(true)}
+            className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full text-[11px] font-medium text-zinc-500 hover:text-red-400 transition-colors"
+            style={{ border: '1px solid rgba(255,255,255,0.07)' }}
+            title="Nouvelle session"
+          >
+            <RotateCcw className="w-3 h-3" />
+            <span className="hidden sm:inline">Nouvelle session</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Confirm dialog — Apple Sheet style */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)' }}
+          onClick={() => setShowConfirm(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl p-6 shadow-2xl"
+            style={{
+              background: 'rgba(24,24,27,0.97)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              backdropFilter: 'blur(32px)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="w-10 h-10 rounded-2xl flex items-center justify-center mx-auto mb-4"
+              style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              <RotateCcw className="w-5 h-5 text-red-400" />
+            </div>
+            <h3 className="text-base font-semibold text-text-primary text-center mb-1.5 tracking-tight">
+              Recommencer depuis zéro ?
+            </h3>
+            <p className="text-[13px] text-text-tertiary text-center mb-6 leading-relaxed">
+              Toutes les données seront supprimées : exercice, questions, document de lois, réponses.
+            </p>
+            <div className="flex gap-2.5">
+              <button
+                onClick={() => setShowConfirm(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium text-text-secondary transition-all"
+                style={{ background: 'rgba(39,39,42,0.8)', border: '1px solid rgba(255,255,255,0.08)' }}
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleNewSession}
+                disabled={resetting}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-all"
+                style={{ background: 'linear-gradient(135deg,#ef4444,#dc2626)', boxShadow: '0 4px 16px rgba(239,68,68,0.3)' }}
+              >
+                {resetting ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Recommencer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
+

@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { analysisApi, documentsApi, type QuestionAnalysis } from '../lib/api';
-import { CheckCircle, AlertTriangle, Lightbulb, Sparkles, Brain, Target, ListChecks, AlertCircle, Zap, BookOpen, FileText } from 'lucide-react';
+import { CheckCircle, AlertTriangle, Lightbulb, Sparkles, Brain, Target, ListChecks, AlertCircle, Zap, BookOpen, FileText, Copy, ClipboardCheck } from 'lucide-react';
 
 interface GuidedAnswer {
   title: string;
@@ -15,6 +15,7 @@ export default function Question() {
   const [loading, setLoading] = useState(false);
   const [useAI, setUseAI] = useState(false);
   const [hasDocument, setHasDocument] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
 
   useEffect(() => {
     const checkDocument = async () => {
@@ -60,6 +61,43 @@ export default function Question() {
       setLoading(false);
     }
   }, [question, useAI]);
+
+  const copyToClipboard = async (text: string, successMessage: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyFeedback(successMessage);
+      setTimeout(() => setCopyFeedback(null), 3000);
+    } catch (error) {
+      console.error('Copy failed:', error);
+      setCopyFeedback('Copie impossible automatiquement. Sélectionnez le texte puis copiez-le manuellement.');
+      setTimeout(() => setCopyFeedback(null), 3000);
+    }
+  };
+
+  const handleCopyAnswer = () => {
+    if (!guidedAnswer) return;
+    const answerText = guidedAnswer.sections.map(s => s.content).join('\n\n');
+    copyToClipboard(answerText, 'Réponse copiée. Vous pouvez la coller dans votre document.');
+  };
+
+  const handleCopySources = () => {
+    if (!analysis || !analysis.usefulPassages) return;
+    const sourcesText = analysis.usefulPassages.map((p, i) => 
+      `Source ${i + 1}:\nDocument: ${p.documentName}\nPage: ${p.page || 'Non détectée'}\nExtrait: "${p.extract}"`
+    ).join('\n\n');
+    copyToClipboard(sourcesText, 'Sources copiées.');
+  };
+
+  const handleCopyAnswerAndSources = () => {
+    if (!guidedAnswer || !analysis) return;
+    const answerText = guidedAnswer.sections.map(s => s.content).join('\n\n');
+    const sourcesText = analysis.usefulPassages?.map((p, i) => 
+      `Source ${i + 1}:\nDocument: ${p.documentName}\nPage: ${p.page || 'Non détectée'}\nExtrait: "${p.extract}"`
+    ).join('\n\n') || 'Aucune source';
+    
+    const fullText = `Question:\n${question}\n\nRéponse:\n${answerText}\n\nSources:\n${sourcesText}\n\nNote: Réponse générée comme aide à la rédaction, à vérifier avec le cours.`;
+    copyToClipboard(fullText, 'Réponse + sources copiées.');
+  };
 
   return (
     <div className="p-8">
@@ -346,11 +384,42 @@ Amélioré par IA
                   ))}
                 </div>
                 <div className="mt-4 pt-4 border-t border-emerald-500/20">
-                  <div className="flex gap-4 text-xs text-text-secondary">
+                  <div className="flex gap-4 text-xs text-text-secondary mb-4">
                     <span>Sujet: {guidedAnswer.metadata.subject}</span>
                     <span>Sources: {guidedAnswer.metadata.sourceCount}</span>
                     <span>Concepts: {guidedAnswer.metadata.detectedConcepts.join(', ')}</span>
                   </div>
+                  
+                  {/* Copy buttons */}
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      onClick={handleCopyAnswer}
+                      className="flex items-center gap-2 px-4 py-2 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-lg hover:bg-emerald-500/30 transition-colors text-sm"
+                    >
+                      <Copy className="w-4 h-4" />
+                      Copier la réponse
+                    </button>
+                    <button
+                      onClick={handleCopySources}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-500/30 transition-colors text-sm"
+                    >
+                      <Copy className="w-4 h-4" />
+                      Copier les sources
+                    </button>
+                    <button
+                      onClick={handleCopyAnswerAndSources}
+                      className="flex items-center gap-2 px-4 py-2 bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded-lg hover:bg-purple-500/30 transition-colors text-sm"
+                    >
+                      <ClipboardCheck className="w-4 h-4" />
+                      Copier réponse + sources
+                    </button>
+                  </div>
+                  
+                  {copyFeedback && (
+                    <div className="mt-3 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-4 py-2">
+                      {copyFeedback}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

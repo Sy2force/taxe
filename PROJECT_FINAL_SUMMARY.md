@@ -632,3 +632,55 @@ Le backend génère des réponses guidées avec une structure obligatoire:
 - Backend TypeScript: ✅ réussi (0 errors)
 - Type safety: ✅ maintenu
 - React Hooks: ✅ conformes aux règles ESLint
+
+---
+
+## Validation Finale Qualité des Réponses (Mai 2026)
+
+### Statuts
+
+| Critère | Statut | Détail |
+|---|---|---|
+| Frontend lint | ✅ Réussi | 0 erreur, 0 warning |
+| Frontend build | ✅ Réussi | 347ms, 0 erreur |
+| Backend TypeScript | ✅ Réussi | 0 erreur |
+| Upload documents | ✅ Fonctionnel | PDF / DOCX / DOC / TXT — erreurs françaises |
+| Recherche dans document | ✅ Fonctionnelle | Parcourt tous les chunks, TF-IDF + boost hébreu x1.5 |
+| RAG source unique | ✅ Respecté | Aucune réponse sans chunk du document |
+| Réponses 15 lignes | ✅ Respecté | Enforced côté GPT + côté backend (double filet) |
+| Sources affichées | ✅ Oui | Nom du document, page (ou "Page non détectée"), extrait |
+| Copier-coller | ✅ Fonctionnel | Copier seul + Copier avec sources + extraits |
+| Mode OpenAI (GPT-4o) | ✅ Fonctionnel si clé configurée | Prompt structuré en 5 blocs obligatoires |
+| Mode local (sans clé) | ✅ Fonctionnel | Réponse structurée depuis chunks, refus si aucune source |
+| Non-hallucination | ✅ Respecté | Seuil score ≥ 0.5, topK=12, "AUCUNE SOURCE SUFFISANTE" si vide |
+| Boutons principaux | ✅ Fonctionnels | "Marquer" désactivé si >15 lignes |
+| Interface française | ✅ Complète | Aucun texte anglais visible |
+| Support hébreu RTL | ✅ Complet | dir=rtl, détection automatique, boost scoring x1.5 |
+
+### Améliorations apportées lors de cette validation
+
+- **UPLOAD_DEBUG** : tous les `console.log` de debug supprimés de `documentService.ts`
+- **Chunking** : taille 600 → 1400 chars, overlap 150 → 300 chars
+- **topK** : 8 → 12 chunks envoyés au modèle
+- **Prompt RAG** : structure en 5 blocs imposés (FAITS / RÈGLE / APPLICATION / SOURCE / CONCLUSION)
+- **Scoring hébreu** : boost x1.5 pour termes hébreux dans `scoreChunk()`
+- **Seuil de pertinence** : `score >= 0.5` (au lieu de `> 0`) pour éliminer faux positifs
+- **Enforce 15L** : double filet — côté GPT dans le prompt + côté backend dans `/api/generate-answer`
+- **Sources** : "Page non détectée" affiché si page absente (plus de champ vide)
+- **Copier+sources** : extrait jusqu'à 200 chars par source inclus dans le presse-papier
+- **Bouton Marquer** : désactivé + rouge si réponse >15 lignes
+- **extractFromPDF** : séparation du catch parse / check texte vide
+
+### Limites restantes connues
+
+- Le chunking est basé sur les caractères, pas les paragraphes — une règle en début/fin de chunk peut être tronquée malgré l'overlap
+- Le scoring TF-IDF est lexical (pas sémantique) — une question paraphrasée peut rater des sources pertinentes
+- Les PDFs scannés (images) ne sont pas supportés — nécessiterait OCR (Tesseract)
+- La page est estimée proportionnellement (non extraite par `pdf-parse`) — peut être légèrement imprécise
+
+### Recommandations finales pour la production
+
+1. Configurer `OPENAI_API_KEY` sur Render pour activer GPT-4o
+2. Configurer `ALLOWED_ORIGINS` avec l'URL Vercel exacte
+3. Vérifier que le document de lois est bien un PDF texte sélectionnable (non scanné)
+4. Tester avec `VITE_API_URL` pointant vers l'URL Render en production
