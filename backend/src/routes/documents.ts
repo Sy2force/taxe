@@ -24,7 +24,6 @@ const upload = multer({
       'application/octet-stream', // Fallback for .doc files
     ];
     
-    // Also check file extension for .doc
     const extension = path.extname(file.originalname).toLowerCase();
     const allowedExtensions = ['.pdf', '.docx', '.doc', '.txt'];
     
