@@ -645,16 +645,8 @@ router.post('/:sessionId/questions/validate', async (req: Request, res: Response
 
 // Helper function to update session timestamp
 async function updateSessionTimestamp(sessionId: string) {
-  const db = await getDatabase();
-  const isProduction = process.env.NODE_ENV === 'production';
-
-  if (isProduction) {
-    const pool = db as Pool;
-    await pool.query('UPDATE sessions SET updated_at = $1 WHERE id = $2', [new Date().toISOString(), sessionId]);
-  } else {
-    const sqlite = db as Database.Database;
-    sqlite.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), sessionId);
-  }
+  const db = await getDatabase() as Database.Database;
+  db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), sessionId);
 }
 
 // POST /api/sessions/:sessionId/sync-exercise - Sync exercise data from local processing
