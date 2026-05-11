@@ -171,13 +171,67 @@ router.post('/:sessionId/upload-exercise', upload.single('file'), async (req: Re
         warning: 'Le texte a été extrait, mais aucune question n\'a été détectée automatiquement. Utilisez le mode manuel pour diviser le texte.'
       });
     }
+
+    // If OpenAI is enabled, rewrite questions for better structure
+    const enhancedQuestions: Array<{ number: number; text: string; cleanedHebrew: string; frenchUnderstanding: string }> = 
+      questions.map(q => ({ ...q, cleanedHebrew: q.text, frenchUnderstanding: '' }));
     
-    for (const q of questions) {
+    if (isOpenAIEnabled()) {
+      const openai = getOpenAIClient();
+      if (openai) {
+        for (let i = 0; i < enhancedQuestions.length; i++) {
+          const q = enhancedQuestions[i];
+          try {
+            const response = await openai.chat.completions.create({
+              model: 'gpt-4o',
+              messages: [
+                {
+                  role: 'system',
+                  content: `Tu es un assistant qui réécrit des questions en hébreu de manière structurée et claire.
+                  
+Pour chaque question, retourne un JSON avec:
+{
+  "cleanedHebrew": "question réécrite proprement en hébreu (même sens, formatage propre, sans erreurs)",
+  "frenchUnderstanding": "explication en français de ce que la question demande"
+}
+
+Règles:
+- Conserver le sens exact de la question
+- Améliorer le formatage et la structure
+- Éliminer les artefacts de conversion PDF
+- Écrire l'explication française clairement`
+                },
+                {
+                  role: 'user',
+                  content: `Question originale:\n${q.text}\n\nRéécris cette question de manière structurée et fournis l'explication en français. Retourne uniquement du JSON valide.`
+                }
+              ],
+              temperature: 0.3,
+              response_format: { type: "json_object" }
+            });
+
+            const content = response.choices[0].message.content || '{}';
+            const parsed = JSON.parse(content);
+            
+            enhancedQuestions[i].cleanedHebrew = parsed.cleanedHebrew || q.text;
+            enhancedQuestions[i].frenchUnderstanding = parsed.frenchUnderstanding || '';
+          } catch (error) {
+            console.error('Error rewriting question:', error);
+            enhancedQuestions[i].cleanedHebrew = q.text;
+            enhancedQuestions[i].frenchUnderstanding = '';
+          }
+        }
+      }
+    }
+    
+    for (const q of enhancedQuestions) {
       await saveQuestionToSession({
         id: uuidv4(),
         sessionId,
         number: q.number,
         originalText: q.text,
+        cleanedHebrew: q.cleanedHebrew,
+        frenchUnderstanding: q.frenchUnderstanding,
         language: 'hebrew',
         status: 'pending',
         createdAt: new Date().toISOString(),
@@ -992,10 +1046,14 @@ function extractQuestionsFromText(text: string): Array<{ number: number; text: s
       }
       currentText = trimmed;
     } else if (currentText) {
-      currentText += '\n' + trimmed;
+      // Only add non-empty lines
+      if (trimmed.length > 0) {
+        currentText += '\n' + trimmed;
+      }
     }
   }
 
+  // Don't forget the last question
   if (currentText) {
     questions.push({ number: currentNumber, text: currentText.trim() });
   }
