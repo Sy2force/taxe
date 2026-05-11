@@ -12,4 +12,13 @@ fs.writeFileSync(
   JSON.stringify({ type: "commonjs" }, null, 2)
 );
 
+// Rename index.js to index.cjs to force CommonJS
+const indexPath = path.join(distDir, "index.js");
+const indexCjsPath = path.join(distDir, "index.cjs");
+
+if (fs.existsSync(indexPath)) {
+  fs.renameSync(indexPath, indexCjsPath);
+  console.log("Renamed dist/index.js to dist/index.cjs");
+}
+
 console.log("Created dist/package.json with type=commonjs");
