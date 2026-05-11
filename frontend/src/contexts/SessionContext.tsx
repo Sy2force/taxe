@@ -257,11 +257,23 @@ export function SessionProvider({ children }: SessionProviderProps) {
     if (!sessionId) throw new Error('Aucune session active');
     const formData = new FormData();
     formData.append('file', file);
-    const response = await fetch(`${API}/sessions/${sessionId}/upload-laws`, {
+    const url = `${API}/sessions/${sessionId}/upload-laws`;
+    console.log("UPLOAD_LAWS_DEBUG", {
+      apiUrl: API_BASE_URL,
+      sessionId,
+      url,
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type
+    });
+    const response = await fetch(url, {
       method: 'POST',
       body: formData
     });
-    if (!response.ok) throw new Error('Erreur lors de l\'upload du document de lois');
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Erreur lors de l\'upload du document de lois');
+    }
     await refreshSession();
   };
 

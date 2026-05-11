@@ -196,11 +196,10 @@ router.post('/:sessionId/upload-laws', upload.single('file'), async (req: Reques
       createdAt: new Date().toISOString()
     };
 
-    await saveDocumentToSession(doc);
-
-    // Build chunks
+    // Build chunks before saving
     const chunks = buildChunks(text, pages);
     doc.chunksCount = chunks.length;
+    
     await saveDocumentToSession(doc);
 
     // Save chunks
