@@ -93,6 +93,21 @@ function initSQLite(db: Database.Database) {
       uploaded_at TEXT NOT NULL
     )
   `);
+
+  // Verification results table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS verification_results (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      question_id INTEGER NOT NULL,
+      question TEXT NOT NULL,
+      answer TEXT NOT NULL,
+      verification_score REAL,
+      is_correct INTEGER DEFAULT 0,
+      missing_sources TEXT,
+      incorrect_facts TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
 }
 
 async function initPostgreSQL(pool: Pool) {
@@ -139,6 +154,20 @@ async function initPostgreSQL(pool: Pool) {
       pages INTEGER,
       content TEXT NOT NULL,
       uploaded_at TEXT NOT NULL
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS verification_results (
+      id SERIAL PRIMARY KEY,
+      question_id INTEGER NOT NULL,
+      question TEXT NOT NULL,
+      answer TEXT NOT NULL,
+      verification_score REAL,
+      is_correct BOOLEAN DEFAULT FALSE,
+      missing_sources JSONB,
+      incorrect_facts JSONB,
+      created_at TEXT NOT NULL
     )
   `);
 }
@@ -392,5 +421,79 @@ export async function getLawsDocumentFromDb() {
       ...row,
       uploadedAt: row.uploaded_at
     };
+  }
+}
+
+export async function saveVerificationResult(result: any) {
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  if (isProduction) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      await client.query(
+        'INSERT INTO verification_results (question_id, question, answer, verification_score, is_correct, missing_sources, incorrect_facts, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+        [result.questionId, result.question, result.answer, result.score, result.isCorrect, JSON.stringify(result.missingSources), JSON.stringify(result.incorrectFacts), result.createdAt]
+      );
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const stmt = sqlite.prepare(`
+      INSERT INTO verification_results (question_id, question, answer, verification_score, is_correct, missing_sources, incorrect_facts, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(result.questionId, result.question, result.answer, result.score, result.isCorrect ? 1 : 0, JSON.stringify(result.missingSources), JSON.stringify(result.incorrectFacts), result.createdAt);
+  }
+}
+
+export async function getAllVerificationResults() {
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  if (isProduction) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      const result = await client.query('SELECT * FROM verification_results ORDER BY created_at DESC');
+      return result.rows.map(row => ({
+        ...row,
+        missingSources: row.missing_sources,
+        incorrectFacts: row.incorrect_facts,
+        isCorrect: row.is_correct
+      }));
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const stmt = sqlite.prepare('SELECT * FROM verification_results ORDER BY created_at DESC');
+    const rows = stmt.all() as any[];
+    return rows.map(row => ({
+      ...row,
+      missingSources: JSON.parse(row.missing_sources || '[]'),
+      incorrectFacts: JSON.parse(row.incorrect_facts || '[]'),
+      isCorrect: row.is_correct === 1
+    }));
+  }
+}
+
+export async function clearVerificationResults() {
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  if (isProduction) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      await client.query('DELETE FROM verification_results');
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    sqlite.prepare('DELETE FROM verification_results').run();
   }
 }

@@ -8,7 +8,7 @@ import { analyzeQuestionLocally, correctAnswerLocally } from '../services/localA
 import { analyzeQuestionWithAI, correctAnswerWithAI, improveStyle, optimizeAnswer, isOpenAIEnabled, getOpenAIClient } from '../services/aiService.js';
 import { buildChunks, storeLawsChunks, getLawsChunks, getLawsDocumentName, getLawsTotalPages, clearLawsChunks, generateAnswerWithRAG, retrieveTopChunks, extractQueryTerms } from '../services/ragService.js';
 import { ETHICAL_WARNING, ANTI_FINAL_ANSWER_RESPONSE } from '../prompts.js';
-import { saveDocumentToDb, getAllDocumentsFromDb, clearAllDocumentsFromDb, saveGeneratedAnswer, getAllGeneratedAnswersFromDb, saveExerciseDocumentToDb, getExerciseDocumentFromDb, saveLawsDocumentToDb, getLawsDocumentFromDb } from '../services/database.js';
+import { saveDocumentToDb, getAllDocumentsFromDb, clearAllDocumentsFromDb, saveGeneratedAnswer, getAllGeneratedAnswersFromDb, saveExerciseDocumentToDb, getExerciseDocumentFromDb, saveLawsDocumentToDb, getLawsDocumentFromDb, saveVerificationResult, getAllVerificationResults, clearVerificationResults } from '../services/database.js';
 
 const router = Router();
 
@@ -981,6 +981,146 @@ router.get('/db/all-documents', async (req: Request, res: Response) => {
     res.json(docs);
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de la récupération des documents' });
+  }
+});
+
+// Verification route - check if answers are 100% correct against the document
+router.post('/verify-answer', async (req: Request, res: Response) => {
+  try {
+    const { questionId, question, answer, documentContent } = req.body;
+    
+    if (!question || !answer || !documentContent) {
+      return res.status(400).json({ error: 'Question, answer et document content sont requis' });
+    }
+
+    if (!isOpenAIEnabled()) {
+      return res.status(400).json({ error: 'OpenAI non configuré pour la vérification' });
+    }
+
+    const openai = getOpenAIClient();
+    if (!openai) {
+      return res.status(400).json({ error: 'OpenAI non configuré' });
+    }
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'system',
+          content: `Tu es un expert en vérification de réponses fiscales. Ton travail est de vérifier si une réponse est 100% correcte basée sur le document fourni.
+
+CRITÈRES DE VÉRIFICATION :
+1. Vérifie si toutes les sources citées existent dans le document
+2. Vérifie si les faits mentionnés sont corrects selon le document
+3. Vérifie si la structure de réponse est complète (faits, règle, application, conclusion)
+4. Attribue un score de 0 à 100 pour la précision
+5. Liste les sources manquantes
+6. Liste les faits incorrects
+
+Réponds en JSON avec ce format :
+{
+  "score": 85,
+  "is_correct": false,
+  "missing_sources": ["section 5.2", "page 45"],
+  "incorrect_facts": ["Le taux mentionné est incorrect selon le document"],
+  "analysis": "Analyse détaillée..."
+}`
+        },
+        {
+          role: 'user',
+          content: `Question: ${question}\n\nRéponse à vérifier: ${answer}\n\nDocument de référence (243 pages):\n${documentContent}\n\nVérifie cette réponse et fournis le résultat en JSON.`
+        }
+      ],
+      temperature: 0.3,
+      response_format: { type: "json_object" }
+    });
+
+    const content = response.choices[0].message.content || '';
+    const verificationResult = JSON.parse(content);
+
+    // Save verification result to database
+    await saveVerificationResult({
+      questionId: questionId || 0,
+      question,
+      answer,
+      score: verificationResult.score,
+      isCorrect: verificationResult.is_correct,
+      missingSources: verificationResult.missing_sources || [],
+      incorrectFacts: verificationResult.incorrect_facts || [],
+      createdAt: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      verification: verificationResult
+    });
+  } catch (error) {
+    console.error('Verification error:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de la vérification' });
+  }
+});
+
+router.get('/verification-results', async (req: Request, res: Response) => {
+  try {
+    const results = await getAllVerificationResults();
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de la récupération des résultats de vérification' });
+  }
+});
+
+router.delete('/verification-results', async (req: Request, res: Response) => {
+  try {
+    await clearVerificationResults();
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de la suppression des résultats de vérification' });
+  }
+});
+
+// Spectator mode - get all saved data for local-to-production viewing
+router.get('/spectator/all-data', async (req: Request, res: Response) => {
+  try {
+    const documents = await getAllDocumentsFromDb();
+    const exerciseDoc = await getExerciseDocumentFromDb();
+    const lawsDoc = await getLawsDocumentFromDb();
+    const answers = await getAllGeneratedAnswersFromDb();
+    const verificationResults = await getAllVerificationResults();
+
+    res.json({
+      documents,
+      exerciseDocument: exerciseDoc,
+      lawsDocument: lawsDoc,
+      generatedAnswers: answers,
+      verificationResults,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de la récupération des données spectateur' });
+  }
+});
+
+// Spectator mode - get real-time updates (polling endpoint)
+router.get('/spectator/updates', async (req: Request, res: Response) => {
+  try {
+    const since = req.query.since as string;
+    const sinceDate = since ? new Date(since) : new Date(Date.now() - 60000); // Default: last minute
+
+    const answers = await getAllGeneratedAnswersFromDb();
+    const verificationResults = await getAllVerificationResults();
+    
+    // Filter for updates since the specified time
+    const recentAnswers = answers.filter(a => new Date(a.createdAt) > sinceDate);
+    const recentVerifications = verificationResults.filter(v => new Date(v.created_at) > sinceDate);
+
+    res.json({
+      hasUpdates: recentAnswers.length > 0 || recentVerifications.length > 0,
+      recentAnswers,
+      recentVerifications,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de la récupération des mises à jour' });
   }
 });
 
