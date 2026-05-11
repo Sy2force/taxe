@@ -135,8 +135,18 @@ router.post('/:sessionId/upload-exercise', upload.single('file'), async (req: Re
 
     await saveDocumentToSession(doc);
 
-    // Detect questions from text (simplified - would need proper extraction logic)
+    // Detect questions from text
     const questions = extractQuestionsFromText(text);
+    
+    if (questions.length === 0) {
+      // Return success with warning if no questions detected
+      return res.json({
+        ...doc,
+        chars: text.length,
+        questionsDetected: 0,
+        warning: 'Le texte a été extrait, mais aucune question n\'a été détectée automatiquement. Utilisez le mode manuel pour diviser le texte.'
+      });
+    }
     
     for (const q of questions) {
       await saveQuestionToSession({
@@ -804,10 +814,20 @@ function extractQuestionsFromText(text: string): Array<{ number: number; text: s
   let currentNumber = 1;
   let currentText = '';
 
-  for (const line of lines) {
+  // Stop before this marker
+  const stopMarker = 'קווים מנחים להגשת עבודה אקדמית';
+  const stopIndex = text.indexOf(stopMarker);
+  const textToProcess = stopIndex !== -1 ? text.substring(0, stopIndex) : text;
+
+  for (const line of textToProcess.split('\n')) {
     const trimmed = line.trim();
-    // Simple Hebrew question detection
-    if (trimmed.match(/^(שאלה|Question)\s*\d+/i)) {
+    
+    // Multiple Hebrew question detection patterns
+    if (trimmed.match(/^שאלה\s+\d+/) || 
+        trimmed.match(/^שאלה\s+[א-ת]/) ||
+        trimmed.match(/^Question\s+\d+/i) ||
+        trimmed.match(/^Exercice\s+\d+/i) ||
+        trimmed.match(/^\s*\d+[\.\)]/)) {
       if (currentText) {
         questions.push({ number: currentNumber++, text: currentText.trim() });
       }

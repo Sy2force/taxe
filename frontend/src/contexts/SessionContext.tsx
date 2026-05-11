@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 
-const API_BASE_URL = "https://taxe-id6h.onrender.com";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5050";
 const API = `${API_BASE_URL}/api`;
-const PUBLIC_APP_URL = "https://taxe-lake.vercel.app";
+const PUBLIC_APP_URL = import.meta.env.VITE_PUBLIC_APP_URL || "http://localhost:5173";
 
 export interface SessionData {
   session: any;
