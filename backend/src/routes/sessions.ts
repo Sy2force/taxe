@@ -34,11 +34,27 @@ const upload = multer({
 // POST /api/sessions - Create new session
 router.post('/', async (req: Request, res: Response) => {
   try {
+    console.log("POST /api/sessions called", req.body);
+    
     const { title } = req.body;
     const sessionId = await createSession(title || 'Session sans titre');
-    res.json({ sessionId, title: title || 'Session sans titre' });
+    
+    console.log("Session created:", sessionId);
+    
+    res.status(201).json({
+      success: true,
+      session: {
+        id: sessionId,
+        title: title || 'Session sans titre',
+        createdAt: new Date().toISOString()
+      }
+    });
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de la création de session' });
+    console.error("POST /api/sessions failed:", error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Erreur lors de la création de session'
+    });
   }
 });
 

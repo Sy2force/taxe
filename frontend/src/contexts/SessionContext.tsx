@@ -191,13 +191,24 @@ export function SessionProvider({ children }: SessionProviderProps) {
       });
       
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('createSession failed:', response.status, errorText);
         throw new Error(`Erreur HTTP: ${response.status}`);
       }
       
       const data = await response.json();
-      setSessionId(data.sessionId);
-      localStorage.setItem('current_session_id', data.sessionId);
-      await loadSession(data.sessionId);
+      const session = data.session || data;
+      const sessionId = session.id || session.sessionId;
+      
+      if (!sessionId) {
+        console.error('Invalid createSession response:', data);
+        throw new Error('Réponse session invalide');
+      }
+      
+      console.log('Session created with ID:', sessionId);
+      setSessionId(sessionId);
+      localStorage.setItem('current_session_id', sessionId);
+      await loadSession(sessionId);
     } catch (err) {
       console.error('Erreur création session:', err);
       setError('Impossible de se connecter au backend. Vérifiez que le serveur est démarré.');
@@ -322,18 +333,28 @@ export function SessionProvider({ children }: SessionProviderProps) {
       });
       
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('ensureSession createSession failed:', response.status, errorText);
         throw new Error(`Erreur HTTP: ${response.status}`);
       }
       
       const data = await response.json();
-      const newSessionId = data.sessionId || data.id;
+      const session = data.session || data;
+      const newSessionId = session.id || session.sessionId;
+      
+      if (!newSessionId) {
+        console.error('Invalid ensureSession response:', data);
+        throw new Error('Réponse session invalide');
+      }
+      
+      console.log('ensureSession created session with ID:', newSessionId);
       setSessionId(newSessionId);
       localStorage.setItem('current_session_id', newSessionId);
       await loadSession(newSessionId);
       setLoading(false);
       return newSessionId;
     } catch (err) {
-      console.error('Erreur création session:', err);
+      console.error('Erreur création session dans ensureSession:', err);
       setError('Impossible de se connecter au backend. Vérifiez que le serveur est démarré.');
       setLoading(false);
       throw new Error('Impossible de créer une session');
