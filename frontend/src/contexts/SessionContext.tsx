@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5050";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5051";
 const API = `${API_BASE_URL}/api`;
 const PUBLIC_APP_URL = import.meta.env.VITE_PUBLIC_APP_URL || "http://localhost:5173";
 
