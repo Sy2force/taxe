@@ -341,15 +341,10 @@ export async function saveDocumentToDb(doc: any) {
   
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      await client.query(
-        'INSERT INTO documents (id, name, type, pages, content, uploaded_at, is_exercise, is_laws) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (id) DO UPDATE SET name=$2, type=$3, pages=$4, content=$5, uploaded_at=$6',
-        [doc.id, doc.name, doc.type, doc.pages || null, doc.content, doc.uploadedAt, doc.isExercise || false, doc.isLaws || false]
-      );
-    } finally {
-      client.release();
-    }
+    await pool.query(
+      'INSERT INTO documents (id, name, type, pages, content, uploaded_at, is_exercise, is_laws) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (id) DO UPDATE SET name=$2, type=$3, pages=$4, content=$5, uploaded_at=$6',
+      [doc.id, doc.name, doc.type, doc.pages || null, doc.content, doc.uploadedAt, doc.isExercise || false, doc.isLaws || false]
+    );
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare(`
@@ -366,18 +361,13 @@ export async function getAllDocumentsFromDb() {
   
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      const result = await client.query('SELECT * FROM documents');
-      return result.rows.map(row => ({
-        ...row,
-        isExercise: row.is_exercise,
-        isLaws: row.is_laws,
-        uploadedAt: row.uploaded_at
-      }));
-    } finally {
-      client.release();
-    }
+    const result = await pool.query('SELECT * FROM documents');
+    return result.rows.map(row => ({
+      ...row,
+      isExercise: row.is_exercise,
+      isLaws: row.is_laws,
+      uploadedAt: row.uploaded_at
+    }));
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare('SELECT * FROM documents');
@@ -397,12 +387,7 @@ export async function clearAllDocumentsFromDb() {
   
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      await client.query('DELETE FROM documents');
-    } finally {
-      client.release();
-    }
+    await pool.query('DELETE FROM documents');
   } else {
     const sqlite = db as Database.Database;
     sqlite.prepare('DELETE FROM documents').run();
@@ -416,15 +401,10 @@ export async function saveGeneratedAnswer(answer: any) {
   
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      await client.query(
-        'INSERT INTO generated_answers (question_text, answer, sources, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT (question_text) DO UPDATE SET answer=$2, sources=$3, created_at=$4',
-        [answer.questionText, answer.answer, JSON.stringify(answer.sources), answer.createdAt || new Date().toISOString()]
-      );
-    } finally {
-      client.release();
-    }
+    await pool.query(
+      'INSERT INTO generated_answers (question_text, answer, sources, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT (question_text) DO UPDATE SET answer=$2, sources=$3, created_at=$4',
+      [answer.questionText, answer.answer, JSON.stringify(answer.sources), answer.createdAt || new Date().toISOString()]
+    );
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare(`
@@ -441,18 +421,13 @@ export async function getAllGeneratedAnswersFromDb() {
   
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      const result = await client.query('SELECT * FROM generated_answers');
-      return result.rows.map(row => ({
-        questionText: row.question_text,
-        answer: row.answer,
-        sources: typeof row.sources === 'string' ? JSON.parse(row.sources) : row.sources,
-        createdAt: row.created_at
-      }));
-    } finally {
-      client.release();
-    }
+    const result = await pool.query('SELECT * FROM generated_answers');
+    return result.rows.map(row => ({
+      questionText: row.question_text,
+      answer: row.answer,
+      sources: typeof row.sources === 'string' ? JSON.parse(row.sources) : row.sources,
+      createdAt: row.created_at
+    }));
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare('SELECT * FROM generated_answers ORDER BY created_at DESC');
@@ -474,15 +449,10 @@ export async function saveExerciseDocumentToDb(doc: any) {
   
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      await client.query(
-        'INSERT INTO exercise_document (id, name, content, uploaded_at) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET name=$2, content=$3, uploaded_at=$4',
-        [doc.id, doc.name, doc.content, doc.uploadedAt]
-      );
-    } finally {
-      client.release();
-    }
+    await pool.query(
+      'INSERT INTO exercise_document (id, name, content, uploaded_at) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET name=$2, content=$3, uploaded_at=$4',
+      [doc.id, doc.name, doc.content, doc.uploadedAt]
+    );
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare(`
@@ -499,20 +469,15 @@ export async function getExerciseDocumentFromDb() {
   
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      const result = await client.query('SELECT * FROM exercise_document LIMIT 1');
-      if (result.rows.length === 0) return null;
-      const row = result.rows[0];
-      return {
-        id: row.id,
-        name: row.name,
-        content: row.content,
-        uploadedAt: row.uploaded_at
-      };
-    } finally {
-      client.release();
-    }
+    const result = await pool.query('SELECT * FROM exercise_document LIMIT 1');
+    if (result.rows.length === 0) return null;
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      name: row.name,
+      content: row.content,
+      uploadedAt: row.uploaded_at
+    };
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare('SELECT * FROM exercise_document LIMIT 1');
@@ -535,15 +500,10 @@ export async function saveLawsDocumentToDb(doc: any) {
   
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      await client.query(
-        'INSERT INTO laws_document (id, name, content, uploaded_at) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET name=$2, content=$3, uploaded_at=$4',
-        [doc.id, doc.name, doc.content, doc.uploadedAt]
-      );
-    } finally {
-      client.release();
-    }
+    await pool.query(
+      'INSERT INTO laws_document (id, name, content, uploaded_at) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET name=$2, content=$3, uploaded_at=$4',
+      [doc.id, doc.name, doc.content, doc.uploadedAt]
+    );
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare(`
@@ -560,20 +520,15 @@ export async function getLawsDocumentFromDb() {
   
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      const result = await client.query('SELECT * FROM laws_document LIMIT 1');
-      if (result.rows.length === 0) return null;
-      const row = result.rows[0];
-      return {
-        id: row.id,
-        name: row.name,
-        content: row.content,
-        uploadedAt: row.uploaded_at
-      };
-    } finally {
-      client.release();
-    }
+    const result = await pool.query('SELECT * FROM laws_document LIMIT 1');
+    if (result.rows.length === 0) return null;
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      name: row.name,
+      content: row.content,
+      uploadedAt: row.uploaded_at
+    };
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare('SELECT * FROM laws_document LIMIT 1');
@@ -592,15 +547,10 @@ export async function saveVerificationResult(result: any) {
   
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      await client.query(
-        'INSERT INTO verification_results (question_id, question, answer, verification_score, is_correct, missing_sources, incorrect_facts, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-        [result.questionId, result.question, result.answer, result.score, result.isCorrect, JSON.stringify(result.missingSources), JSON.stringify(result.incorrectFacts), result.createdAt]
-      );
-    } finally {
-      client.release();
-    }
+    await pool.query(
+      'INSERT INTO verification_results (question_id, question, answer, verification_score, is_correct, missing_sources, incorrect_facts, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [result.questionId, result.question, result.answer, result.score, result.isCorrect, JSON.stringify(result.missingSources), JSON.stringify(result.incorrectFacts), result.createdAt]
+    );
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare(`
@@ -617,18 +567,13 @@ export async function getAllVerificationResults() {
   
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      const result = await client.query('SELECT * FROM verification_results ORDER BY created_at DESC');
-      return result.rows.map(row => ({
-        ...row,
-        missingSources: row.missing_sources,
-        incorrectFacts: row.incorrect_facts,
-        isCorrect: row.is_correct
-      }));
-    } finally {
-      client.release();
-    }
+    const result = await pool.query('SELECT * FROM verification_results ORDER BY created_at DESC');
+    return result.rows.map(row => ({
+      ...row,
+      missingSources: row.missing_sources,
+      incorrectFacts: row.incorrect_facts,
+      isCorrect: row.is_correct
+    }));
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare('SELECT * FROM verification_results ORDER BY created_at DESC');
@@ -648,12 +593,7 @@ export async function clearVerificationResults() {
   
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      await client.query('DELETE FROM verification_results');
-    } finally {
-      client.release();
-    }
+    await pool.query('DELETE FROM verification_results');
   } else {
     const sqlite = db as Database.Database;
     sqlite.prepare('DELETE FROM verification_results').run();
@@ -669,15 +609,10 @@ export async function createSession(title: string = 'Session sans titre') {
 
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      await client.query(
-        'INSERT INTO sessions (id, title, created_at, updated_at, status) VALUES ($1, $2, $3, $4, $5)',
-        [sessionId, title, now, now, 'active']
-      );
-    } finally {
-      client.release();
-    }
+    await pool.query(
+      'INSERT INTO sessions (id, title, created_at, updated_at, status) VALUES ($1, $2, $3, $4, $5)',
+      [sessionId, title, now, now, 'active']
+    );
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare('INSERT INTO sessions (id, title, created_at, updated_at, status) VALUES (?, ?, ?, ?, ?)');
@@ -693,14 +628,9 @@ export async function getSession(sessionId: string) {
 
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      const result = await client.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
-      if (result.rows.length === 0) return null;
-      return result.rows[0];
-    } finally {
-      client.release();
-    }
+    const result = await pool.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+    if (result.rows.length === 0) return null;
+    return result.rows[0];
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare('SELECT * FROM sessions WHERE id = ?');
@@ -715,15 +645,10 @@ export async function saveDocumentToSession(doc: any) {
 
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      await client.query(
-        'INSERT INTO documents (id, session_id, type, filename, mimetype, extracted_text, character_count, page_count, chunks_count, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
-        [doc.id, doc.sessionId, doc.type, doc.filename, doc.mimetype, doc.extractedText, doc.characterCount, doc.pageCount, doc.chunksCount, doc.status, doc.createdAt]
-      );
-    } finally {
-      client.release();
-    }
+    await pool.query(
+      'INSERT INTO documents (id, session_id, type, filename, mimetype, extracted_text, character_count, page_count, chunks_count, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
+      [doc.id, doc.sessionId, doc.type, doc.filename, doc.mimetype, doc.extractedText, doc.characterCount, doc.pageCount, doc.chunksCount, doc.status, doc.createdAt]
+    );
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare(`
@@ -740,15 +665,10 @@ export async function saveQuestionToSession(question: any) {
 
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      await client.query(
-        'INSERT INTO questions (id, session_id, number, original_text, language, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-        [question.id, question.sessionId, question.number, question.originalText, question.language, question.status, question.createdAt, question.updatedAt]
-      );
-    } finally {
-      client.release();
-    }
+    await pool.query(
+      'INSERT INTO questions (id, session_id, number, original_text, language, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [question.id, question.sessionId, question.number, question.originalText, question.language, question.status, question.createdAt, question.updatedAt]
+    );
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare(`
@@ -766,15 +686,10 @@ export async function saveAnswerToSession(answer: any) {
 
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      await client.query(
-        'INSERT INTO answers (id, session_id, question_id, hebrew_answer, french_explanation, reasoning, sources_json, line_count, status, copied, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ON CONFLICT (id) DO UPDATE SET hebrew_answer=$4, french_explanation=$5, reasoning=$6, sources_json=$7, line_count=$8, status=$9, copied=$10, updated_at=$12',
-        [answer.id, answer.sessionId, answer.questionId, answer.hebrewAnswer, answer.frenchExplanation, answer.reasoning, JSON.stringify(answer.sources), answer.lineCount, answer.status, answer.copied, answer.createdAt, now]
-      );
-    } finally {
-      client.release();
-    }
+    await pool.query(
+      'INSERT INTO answers (id, session_id, question_id, hebrew_answer, french_explanation, reasoning, sources_json, line_count, status, copied, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ON CONFLICT (id) DO UPDATE SET hebrew_answer=$4, french_explanation=$5, reasoning=$6, sources_json=$7, line_count=$8, status=$9, copied=$10, updated_at=$12',
+      [answer.id, answer.sessionId, answer.questionId, answer.hebrewAnswer, answer.frenchExplanation, answer.reasoning, JSON.stringify(answer.sources), answer.lineCount, answer.status, answer.copied, answer.createdAt, now]
+    );
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare(`
@@ -793,15 +708,10 @@ export async function saveFinalCheckToSession(check: any) {
 
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      await client.query(
-        'INSERT INTO final_checks (id, session_id, question_id, score, status, issues_json, corrections_json, sources_json, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (id) DO UPDATE SET score=$4, status=$5, issues_json=$6, corrections_json=$7, sources_json=$8',
-        [check.id, check.sessionId, check.questionId, check.score, check.status, JSON.stringify(check.issues), JSON.stringify(check.corrections), JSON.stringify(check.sources), check.createdAt]
-      );
-    } finally {
-      client.release();
-    }
+    await pool.query(
+      'INSERT INTO final_checks (id, session_id, question_id, score, status, issues_json, corrections_json, sources_json, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (id) DO UPDATE SET score=$4, status=$5, issues_json=$6, corrections_json=$7, sources_json=$8',
+      [check.id, check.sessionId, check.questionId, check.score, check.status, JSON.stringify(check.issues), JSON.stringify(check.corrections), JSON.stringify(check.sources), check.createdAt]
+    );
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare(`
@@ -820,15 +730,10 @@ export async function saveDocumentChunkToSession(chunk: any) {
 
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      await client.query(
-        'INSERT INTO document_chunks (id, session_id, document_id, chunk_index, text, page_number, metadata_json, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-        [chunk.id, chunk.sessionId, chunk.documentId, chunk.chunkIndex, chunk.text, chunk.pageNumber, JSON.stringify(chunk.metadata), chunk.createdAt]
-      );
-    } finally {
-      client.release();
-    }
+    await pool.query(
+      'INSERT INTO document_chunks (id, session_id, document_id, chunk_index, text, page_number, metadata_json, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [chunk.id, chunk.sessionId, chunk.documentId, chunk.chunkIndex, chunk.text, chunk.pageNumber, JSON.stringify(chunk.metadata), chunk.createdAt]
+    );
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare(`
@@ -845,28 +750,23 @@ export async function getSessionData(sessionId: string) {
 
   if (isProduction) {
     const pool = db as Pool;
-    const client = await pool.connect();
-    try {
-      const session = await client.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
-      const documents = await client.query('SELECT * FROM documents WHERE session_id = $1', [sessionId]);
-      const questions = await client.query('SELECT * FROM questions WHERE session_id = $1 ORDER BY number', [sessionId]);
-      const answers = await client.query('SELECT * FROM answers WHERE session_id = $1', [sessionId]);
-      const finalChecks = await client.query('SELECT * FROM final_checks WHERE session_id = $1', [sessionId]);
-      const chunks = await client.query('SELECT * FROM document_chunks WHERE session_id = $1 ORDER BY chunk_index', [sessionId]);
-      const finalReport = await client.query('SELECT * FROM final_reports WHERE session_id = $1', [sessionId]);
+    const session = await pool.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+    const documents = await pool.query('SELECT * FROM documents WHERE session_id = $1', [sessionId]);
+    const questions = await pool.query('SELECT * FROM questions WHERE session_id = $1 ORDER BY number', [sessionId]);
+    const answers = await pool.query('SELECT * FROM answers WHERE session_id = $1', [sessionId]);
+    const finalChecks = await pool.query('SELECT * FROM final_checks WHERE session_id = $1', [sessionId]);
+    const chunks = await pool.query('SELECT * FROM document_chunks WHERE session_id = $1 ORDER BY chunk_index', [sessionId]);
+    const finalReport = await pool.query('SELECT * FROM final_reports WHERE session_id = $1', [sessionId]);
 
-      return {
-        session: session.rows[0] || null,
-        documents: documents.rows,
-        questions: questions.rows,
-        answers: answers.rows,
-        finalChecks: finalChecks.rows,
-        chunks: chunks.rows,
-        finalReport: finalReport.rows[0] || null
-      };
-    } finally {
-      client.release();
-    }
+    return {
+      session: session.rows[0] || null,
+      documents: documents.rows,
+      questions: questions.rows,
+      answers: answers.rows,
+      finalChecks: finalChecks.rows,
+      chunks: chunks.rows,
+      finalReport: finalReport.rows[0] || null
+    };
   } else {
     const sqlite = db as Database.Database;
     const session = sqlite.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId) as any;
