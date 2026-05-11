@@ -211,9 +211,8 @@ router.post('/:sessionId/upload-laws', upload.single('file'), async (req: Reques
         documentId: doc.id,
         chunkIndex: i,
         text: chunks[i].text,
-        page: chunks[i].page || undefined,
-        startChar: chunks[i].startChar,
-        endChar: chunks[i].endChar,
+        pageNumber: chunks[i].page,
+        metadata: { startChar: chunks[i].startChar, endChar: chunks[i].endChar },
         createdAt: new Date().toISOString()
       });
     }
@@ -249,7 +248,7 @@ router.post('/:sessionId/generate-all-answers', async (req: Request, res: Respon
     const chunks = data.chunks.map((c: any) => ({
       id: c.id,
       text: c.text,
-      page: c.page_number || c.page,
+      page: c.page_number || c.page || 0,
       startChar: c.start_char || 0,
       endChar: c.end_char || c.text.length
     }));
@@ -859,7 +858,7 @@ Règles :
     hebrew: hebrew || content,
     french: french || '',
     reasoning: 'Généré avec les sources fournies',
-    sources: relevantChunks.map(c => ({ chunkIndex: c.id, pageNumber: c.page, extract: c.text.substring(0, 200), documentName: 'Document de lois fiscales' }))
+    sources: relevantChunks.map(c => ({ chunkIndex: c.id, page: c.page, extract: c.text.substring(0, 200), documentName: 'Document de lois fiscales' }))
   };
 }
 
