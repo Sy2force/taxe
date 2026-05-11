@@ -24,12 +24,13 @@ export async function analyzeQuestionWithAI(question: string, context: string): 
   }
 
   const response = await openaiClient.chat.completions.create({
-    model: 'gpt-4',
+    model: 'gpt-4o',
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: `Question: ${question}\n\nContexte des documents:\n${context}\n\nAnalyse cette question selon le format demandé.` }
+      { role: 'user', content: `Question: ${question}\n\nContexte des documents:\n${context}\n\nAnalyse cette question selon le format demandé. Réponds en hébreu avec traduction française en bas.` }
     ],
-    temperature: 0.7,
+    temperature: 0.8,
+    max_tokens: 2000,
   });
 
   const content = response.choices[0].message.content || '';
@@ -42,12 +43,13 @@ export async function correctAnswerWithAI(answer: string, question: string, cont
   }
 
   const response = await openaiClient.chat.completions.create({
-    model: 'gpt-4',
+    model: 'gpt-4o',
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: `Question: ${question}\n\nRéponse de l'étudiante: ${answer}\n\nContexte des documents:\n${context}\n\nCorrige cette réponse selon le format demandé.` }
+      { role: 'user', content: `Question: ${question}\n\nRéponse de l'étudiante: ${answer}\n\nContexte des documents:\n${context}\n\nCorrige cette réponse selon le format demandé. Réponds en hébreu avec traduction française en bas.` }
     ],
-    temperature: 0.7,
+    temperature: 0.8,
+    max_tokens: 2000,
   });
 
   const content = response.choices[0].message.content || '';
@@ -60,12 +62,13 @@ export async function improveStyle(text: string): Promise<{ correctedText: strin
   }
 
   const response = await openaiClient.chat.completions.create({
-    model: 'gpt-4',
+    model: 'gpt-4o',
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: `Texte à améliorer: ${text}\n\nCorrige uniquement la langue et le style. Ne change pas le raisonnement. Indique les points juridiques à vérifier.` }
+      { role: 'user', content: `Texte à améliorer: ${text}\n\nCorrige uniquement la langue et le style. Ne change pas le raisonnement. Indique les points juridiques à vérifier. Réponds en hébreu avec traduction française en bas.` }
     ],
-    temperature: 0.5,
+    temperature: 0.6,
+    max_tokens: 1500,
   });
 
   const content = response.choices[0].message.content || '';
@@ -78,12 +81,13 @@ export async function optimizeAnswer(answer: string, question: string): Promise<
   }
 
   const response = await openaiClient.chat.completions.create({
-    model: 'gpt-4',
+    model: 'gpt-4o',
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: `Question: ${question}\n\nRéponse: ${answer}\n\nDonne des conseils pour optimiser cette réponse sans la réécrire complètement.` }
+      { role: 'user', content: `Question: ${question}\n\nRéponse: ${answer}\n\nDonne des conseils pour optimiser cette réponse sans la réécrire complètement. Réponds en hébreu avec traduction française en bas.` }
     ],
-    temperature: 0.7,
+    temperature: 0.8,
+    max_tokens: 1500,
   });
 
   return response.choices[0].message.content || '';
