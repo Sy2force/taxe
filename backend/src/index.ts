@@ -7,6 +7,9 @@ import { initializeOpenAI } from './services/aiService.js';
 
 dotenv.config();
 
+// Force migration to run on next startup
+console.log('Backend starting - migration will run automatically on PostgreSQL connection');
+
 const app = express();
 const PORT = Number(process.env.PORT) || 5051;
 
