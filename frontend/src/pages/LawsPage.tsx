@@ -206,7 +206,7 @@ export default function LawsPage() {
       )}
 
       {/* Actions */}
-      {status === 'success' && <ActionsBar onGenerate={handleGenerateAnswers} onBack={() => navigate('/exercise')} />}
+      {status === 'success' && <ActionsBar onGenerate={handleGenerateAnswers} onBack={() => navigate('/exercise')} sessionData={sessionData} />}
 
       {status === 'idle' && !uploading && (
         <div className="text-center py-16">
@@ -219,12 +219,8 @@ export default function LawsPage() {
 }
 
 // Barre d'actions — bouton générer désactivé si aucune question importée
-function ActionsBar({ onGenerate, onBack }: { onGenerate: () => void; onBack: () => void }) {
-  let hasQuestions = false;
-  try {
-    const raw = localStorage.getItem('exercise_questions');
-    hasQuestions = !!raw && JSON.parse(raw).length > 0;
-  } catch { /* ignore */ }
+function ActionsBar({ onGenerate, onBack, sessionData }: { onGenerate: () => void; onBack: () => void; sessionData: any }) {
+  const hasQuestions = sessionData?.questions && sessionData.questions.length > 0;
 
   return (
     <div className="flex items-center justify-between">
@@ -237,7 +233,7 @@ function ActionsBar({ onGenerate, onBack }: { onGenerate: () => void; onBack: ()
         <button onClick={onGenerate}
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all"
           style={{ background: 'linear-gradient(135deg,#10b981,#059669)', boxShadow: '0 0 0 1px rgba(16,185,129,0.3), 0 4px 16px rgba(16,185,129,0.25)' }}>
-          <Zap className="w-4 h-4" /> Générer les réponses <ChevronRight className="w-4 h-4" />
+          <Zap className="w-4 h-4" /> Analyser les questions <ChevronRight className="w-4 h-4" />
         </button>
       ) : (
         <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[12px] font-medium"

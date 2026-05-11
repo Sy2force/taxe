@@ -6,6 +6,7 @@ import { useSessionContext } from '../contexts/SessionContext';
 interface DetectedQuestion {
   id: number;
   originalHebrew: string;
+  cleanedHebrew?: string;
   frenchTranslation: string;
   frenchUnderstanding: string;
   points: string;
@@ -40,11 +41,12 @@ export default function ExercisePage() {
     if (sessionData && sessionData.questions.length > 0) {
       const sessionQuestions = sessionData.questions.map((q: any, index: number) => ({
         id: index + 1,
-        originalHebrew: q.original_text || q.originalHebrew || '',
-        frenchTranslation: q.frenchTranslation || '',
-        frenchUnderstanding: q.frenchUnderstanding || '',
+        originalHebrew: q.original_text || q.originalHebrew || q.original_hebrew || '',
+        cleanedHebrew: q.cleanedHebrew || q.cleaned_hebrew || '',
+        frenchTranslation: q.frenchTranslation || q.french_translation || '',
+        frenchUnderstanding: q.frenchUnderstanding || q.french_understanding || '',
         points: q.points || '',
-        answerLimitLines: q.answerLimitLines || 15,
+        answerLimitLines: q.answerLimitLines || q.answer_limit_lines || 15,
         bullets: q.bullets || [],
         status: (q.status || 'detected') as "detected" | "validated" | "needs_review"
       }));
@@ -124,10 +126,16 @@ export default function ExercisePage() {
         await validateQuestions(updated.map(q => ({
           id: q.id.toString(),
           original_text: q.originalHebrew,
+          original_hebrew: q.originalHebrew,
+          cleanedHebrew: q.cleanedHebrew,
+          cleaned_hebrew: q.cleanedHebrew,
           frenchTranslation: q.frenchTranslation,
+          french_translation: q.frenchTranslation,
           frenchUnderstanding: q.frenchUnderstanding,
+          french_understanding: q.frenchUnderstanding,
           points: q.points,
           answerLimitLines: q.answerLimitLines,
+          answer_limit_lines: q.answerLimitLines,
           bullets: q.bullets,
           status: q.status
         })));
@@ -502,19 +510,35 @@ export default function ExercisePage() {
                   />
                 </div>
 
-                {/* French translation */}
+                {/* Cleaned Hebrew rewrite */}
                 <div className="px-4 py-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-                  <div className="text-[11px] font-medium text-text-tertiary mb-2">Version française:</div>
+                  <div className="text-[11px] font-medium text-text-tertiary mb-2">Question réécrite proprement en hébreu:</div>
                   <textarea
-                    value={q.frenchTranslation}
+                    value={q.cleanedHebrew || ''}
                     onChange={e => {
-                      const updated = questions.map(qq => qq.id === q.id ? { ...qq, frenchTranslation: e.target.value } : qq);
+                      const updated = questions.map(qq => qq.id === q.id ? { ...qq, cleanedHebrew: e.target.value } : qq);
+                      setQuestions(updated);
+                    }}
+                    rows={Math.min(4, Math.max(2, (q.cleanedHebrew || '').split('\n').length + 1))}
+                    dir="rtl"
+                    className="w-full bg-zinc-950/60 text-[13px] text-text-primary p-3 rounded-lg focus:outline-none resize-none leading-relaxed placeholder:text-zinc-700 text-right"
+                    placeholder="Non encore généré..."
+                  />
+                </div>
+
+                {/* French understanding */}
+                <div className="px-4 py-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                  <div className="text-[11px] font-medium text-text-tertiary mb-2">Compréhension en français:</div>
+                  <textarea
+                    value={q.frenchUnderstanding || ''}
+                    onChange={e => {
+                      const updated = questions.map(qq => qq.id === q.id ? { ...qq, frenchUnderstanding: e.target.value } : qq);
                       setQuestions(updated);
                     }}
                     rows={3}
                     dir="ltr"
                     className="w-full bg-zinc-950/60 text-[13px] text-text-primary p-3 rounded-lg focus:outline-none resize-none leading-relaxed placeholder:text-zinc-700"
-                    placeholder="Traduction / compréhension en français..."
+                    placeholder="Compréhension non encore disponible..."
                   />
                 </div>
 

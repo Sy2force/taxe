@@ -23,11 +23,11 @@ function getFinalStatus(a: AnswerData | undefined): FinalStatus {
 }
 
 const statusConfig: Record<FinalStatus, { label: string; color: string; icon: typeof CheckCircle }> = {
-  ready: { label: 'Prête', color: 'text-emerald-400', icon: CheckCircle },
-  verify: { label: 'À vérifier', color: 'text-yellow-400', icon: AlertCircle },
-  no_source: { label: 'Source manquante', color: 'text-orange-400', icon: AlertCircle },
-  too_long: { label: 'Trop longue', color: 'text-red-400', icon: XCircle },
-  not_generated: { label: 'Non générée', color: 'text-text-tertiary', icon: XCircle },
+  ready: { label: 'Prêt pour rédaction', color: 'text-emerald-400', icon: CheckCircle },
+  verify: { label: 'Sources à vérifier', color: 'text-yellow-400', icon: AlertCircle },
+  no_source: { label: 'Source insuffisante', color: 'text-orange-400', icon: AlertCircle },
+  too_long: { label: 'Réponse trop longue', color: 'text-red-400', icon: XCircle },
+  not_generated: { label: 'Non analysé', color: 'text-text-tertiary', icon: XCircle },
 };
 
 export default function VerificationPage() {
@@ -64,8 +64,8 @@ export default function VerificationPage() {
           style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', color: '#fcd34d' }}>
           Étape 4
         </div>
-        <h1 className="text-[26px] font-bold text-text-primary tracking-tight mb-1">Vérification</h1>
-        <p className="text-[13px] text-text-tertiary">État de chaque réponse avant soumission finale.</p>
+        <h1 className="text-[26px] font-bold text-text-primary tracking-tight mb-1">Vérification de la préparation</h1>
+        <p className="text-[13px] text-text-tertiary">État de la préparation pour chaque question.</p>
       </div>
 
       {questions.length === 0 ? (

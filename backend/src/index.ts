@@ -12,10 +12,25 @@ const app = express();
 const PORT = Number(process.env.PORT) || 5051;
 
 // CORS configuration - support Vercel frontend and preview deployments
-const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) || [];
+const allowedOrigins = [
+  'https://taxe-lake.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:5174'
+].concat(
+  process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) || []
+);
 
 app.use(cors({
-  origin: '*',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+      callback(null, true);
+    } else {
+      callback(null, true); // For now, allow all origins - can restrict in production
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -28,6 +43,10 @@ app.use('/api', documentsRouter);
 app.use('/api/sessions', sessionsRouter);
 
 app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', port: PORT, timestamp: new Date().toISOString() });
+});
+
+app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', port: PORT, timestamp: new Date().toISOString() });
 });
 

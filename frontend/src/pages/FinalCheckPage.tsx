@@ -29,10 +29,10 @@ export default function FinalCheckPage() {
   const copyHebrewAnswers = () => {
     const text = questions.map((q: any, i: number) => {
       const answer = answers.find((a: any) => a.question_id === q.id);
-      return `Question ${i + 1}:\n${answer?.hebrew_answer || 'Non générée'}`;
+      return `Question ${i + 1}:\n${answer?.hebrew_answer || 'Non analysée'}`;
     }).join('\n\n');
     navigator.clipboard.writeText(text);
-    setCopyFeedback('Réponses hébreu copiées');
+    setCopyFeedback('Suggestions hébreu copiées');
     setTimeout(() => setCopyFeedback(''), 2000);
   };
 
@@ -40,17 +40,17 @@ export default function FinalCheckPage() {
     const text = questions.map((q: any, i: number) => {
       const answer = answers.find((a: any) => a.question_id === q.id);
       const sources = answer?.sources_json || [];
-      return `Question ${i + 1}:\n${answer?.hebrew_answer || 'Non générée'}\n\nSources: ${sources.map((s: any) => s.extract).join('; ')}`;
+      return `Question ${i + 1}:\n${answer?.hebrew_answer || 'Non analysée'}\n\nSources: ${sources.map((s: any) => s.excerpt).join('; ')}`;
     }).join('\n\n');
     navigator.clipboard.writeText(text);
-    setCopyFeedback('Réponses + sources copiées');
+    setCopyFeedback('Suggestions + sources copiées');
     setTimeout(() => setCopyFeedback(''), 2000);
   };
 
   const copyFinalReport = () => {
     const text = finalReport?.final_text || 'Rapport non généré';
     navigator.clipboard.writeText(text);
-    setCopyFeedback('Rapport final copié');
+    setCopyFeedback('Rapport de préparation copié');
     setTimeout(() => setCopyFeedback(''), 2000);
   };
 
@@ -59,6 +59,17 @@ export default function FinalCheckPage() {
     : 0;
 
   const isHebrew = (t: string) => /[\u0590-\u05FF]/.test(t);
+
+  // Helper to parse reasoning JSON
+  const parseReasoning = (reasoning: string | object | undefined) => {
+    if (!reasoning) return {};
+    if (typeof reasoning === "object") return reasoning;
+    try {
+      return JSON.parse(reasoning);
+    } catch {
+      return { reasoningText: typeof reasoning === 'string' ? reasoning : '' };
+    }
+  };
 
   return (
     <div className="min-h-screen px-4 sm:px-6 lg:px-8 py-6 sm:py-10 max-w-3xl mx-auto">
@@ -70,9 +81,9 @@ export default function FinalCheckPage() {
         </div>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-[26px] font-bold text-text-primary tracking-tight mb-1">Document final</h1>
+            <h1 className="text-[26px] font-bold text-text-primary tracking-tight mb-1">Rapport de préparation</h1>
             <p className="text-[13px] text-text-tertiary max-w-sm leading-relaxed">
-              Rapport final avec toutes les réponses, sources et vérifications.
+              Rapport de préparation avec suggestions, sources et plans de réponse.
             </p>
           </div>
           <button onClick={() => navigate('/verification')}
@@ -197,6 +208,10 @@ export default function FinalCheckPage() {
               const answer = answers.find((a: any) => a.question_id === q.id);
               const check = finalChecks.find((c: any) => c.question_id === q.id);
               const sources = answer?.sources_json || [];
+              const parsedReasoning = parseReasoning(answer?.reasoning);
+              const suggestions = Array.isArray(parsedReasoning.suggestions) ? parsedReasoning.suggestions : [];
+              const recommendedPlan15Lines = Array.isArray(parsedReasoning.recommendedPlan15Lines) ? parsedReasoning.recommendedPlan15Lines : [];
+              const pointsToVerify = Array.isArray(parsedReasoning.pointsToVerify) ? parsedReasoning.pointsToVerify : [];
 
               return (
                 <div key={q.id} className="rounded-2xl overflow-hidden"
@@ -234,6 +249,39 @@ export default function FinalCheckPage() {
                       <div>
                         <p className="text-[10px] font-bold text-text-muted uppercase tracking-widest mb-2">Explication française</p>
                         <p className="text-[12px] text-text-secondary leading-relaxed">{answer.french_explanation}</p>
+                      </div>
+                    )}
+
+                    {suggestions.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-2">Suggestions pour répondre</p>
+                        <ul className="space-y-1">
+                          {suggestions.map((s: string, si: number) => (
+                            <li key={si} className="text-[11px] text-text-secondary">• {s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {recommendedPlan15Lines.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-2">Plan conseillé en 15 lignes</p>
+                        <ol className="space-y-1">
+                          {recommendedPlan15Lines.map((p: string, pi: number) => (
+                            <li key={pi} className="text-[11px] text-text-secondary">{pi + 1}. {p}</li>
+                          ))}
+                        </ol>
+                      </div>
+                    )}
+
+                    {pointsToVerify.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mb-2">Points à vérifier</p>
+                        <ul className="space-y-1">
+                          {pointsToVerify.map((p: string, pi: number) => (
+                            <li key={pi} className="text-[11px] text-text-secondary">✓ {p}</li>
+                          ))}
+                        </ul>
                       </div>
                     )}
 

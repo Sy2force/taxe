@@ -26,7 +26,8 @@ function App() {
                   <Route path="/laws" element={<LawsPage />} />
                   <Route path="/answers" element={<AnswersPage />} />
                   <Route path="/verification" element={<VerificationPage />} />
-                  <Route path="/final-check" element={<FinalCheckPage />} />
+                  <Route path="/final" element={<FinalCheckPage />} />
+                  <Route path="/final-check" element={<Navigate to="/final" replace />} />
                   <Route path="*" element={<Navigate to="/exercise" replace />} />
                 </Routes>
               </main>

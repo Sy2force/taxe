@@ -219,13 +219,13 @@ export default function AnswersPage() {
                 style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', color: '#6ee7b7' }}>
                 Étape 3
               </div>
-              <h1 className="text-[26px] font-bold text-text-primary tracking-tight mb-1">Réponses générées</h1>
+              <h1 className="text-[26px] font-bold text-text-primary tracking-tight mb-1">Suggestions de réponse</h1>
               <p className="text-[13px] text-text-tertiary">
                 {(() => {
                   const done = questions.filter(q => answers.get(q.id)?.status === 'done').length;
                   const failed = questions.filter(q => answers.get(q.id)?.status === 'error').length;
                   const noSrc = questions.filter(q => answers.get(q.id)?.status === 'no_source').length;
-                  return `${done}/${questions.length} prêtes${failed > 0 ? ` · ${failed} erreur(s)` : ''}${noSrc > 0 ? ` · ${noSrc} sans source` : ''}`;
+                  return `${done}/${questions.length} analysées${failed > 0 ? ` · ${failed} erreur(s)` : ''}${noSrc > 0 ? ` · ${noSrc} sans source` : ''}`;
                 })()}
               </p>
             </div>
@@ -246,7 +246,7 @@ export default function AnswersPage() {
               <button onClick={copyAll}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium transition-all"
                 style={{ background: 'rgba(24,24,27,0.8)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
-                <ClipboardCopy className="w-3.5 h-3.5" /> Tout copier
+                <ClipboardCopy className="w-3.5 h-3.5" /> Copier suggestions
               </button>
               <button onClick={() => navigate('/verification')}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-semibold text-white"
@@ -406,8 +406,23 @@ function AnswerDetailPanel({ question, answer, onRegenerate, onCopy, onCopyWithS
   const [chatHistory, setChatHistory] = useState<{ role: 'user' | 'assistant'; content: string }[]>([]);
   const [showSources, setShowSources] = useState(true);
 
+  // Helper to parse reasoning JSON
+  const parseReasoning = (reasoning: string | object | undefined) => {
+    if (!reasoning) return {};
+    if (typeof reasoning === "object") return reasoning;
+    try {
+      return JSON.parse(reasoning);
+    } catch {
+      return { reasoningText: typeof reasoning === 'string' ? reasoning : '' };
+    }
+  };
+
   const displayAnswer = editing ? editedText : (answer?.editedAnswer || answer?.answer || '');
   const lineCount = displayAnswer.split('\n').filter(l => l.trim()).length;
+  const parsedReasoning = parseReasoning(answer?.reasoning);
+  const suggestions = Array.isArray(parsedReasoning.suggestions) ? parsedReasoning.suggestions : [];
+  const recommendedPlan15Lines = Array.isArray(parsedReasoning.recommendedPlan15Lines) ? parsedReasoning.recommendedPlan15Lines : [];
+  const pointsToVerify = Array.isArray(parsedReasoning.pointsToVerify) ? parsedReasoning.pointsToVerify : [];
 
   const handleStartEdit = () => {
     setEditedText(answer?.editedAnswer || answer?.answer || '');
@@ -558,18 +573,102 @@ function AnswerDetailPanel({ question, answer, onRegenerate, onCopy, onCopyWithS
               <Copy className="w-3.5 h-3.5" /> {copyFeedback[question.id * 10 + 3] || 'Copier explication française'}
             </button>
           )}
+          {suggestions.length > 0 && (
+            <button onClick={() => {
+              const text = `Question ${question.id}\n${question.text}\n\nCompréhension en français:\n${answer.understanding || ''}\n\nSuggestions:\n${suggestions.join('\n')}\n\nPlan 15 lignes:\n${recommendedPlan15Lines.join('\n')}\n\nPoints à vérifier:\n${pointsToVerify.join('\n')}`;
+              onCopy(text);
+            }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium transition-all"
+              style={copyFeedback[question.id * 10 + 4]
+                ? { background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: '#6ee7b7' }
+                : { background: 'rgba(24,24,27,0.8)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
+              <Copy className="w-3.5 h-3.5" /> {copyFeedback[question.id * 10 + 4] || 'Copier suggestions'}
+            </button>
+          )}
+          {recommendedPlan15Lines.length > 0 && (
+            <button onClick={() => {
+              const text = `Plan de réponse - Question ${question.id}:\n\n${recommendedPlan15Lines.join('\n')}`;
+              onCopy(text);
+            }}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium transition-all"
+              style={copyFeedback[question.id * 10 + 5]
+                ? { background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: '#6ee7b7' }
+                : { background: 'rgba(24,24,27,0.8)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
+              <Copy className="w-3.5 h-3.5" /> {copyFeedback[question.id * 10 + 5] || 'Copier plan 15L'}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Pourquoi cette réponse */}
-      {answer.reasoning && (
+      {/* Suggestions pour répondre */}
+      {answer.reasoning && suggestions.length === 0 && (
+        <div className="rounded-2xl p-5" style={{ background: 'rgba(24,24,27,0.6)', border: '1px solid rgba(255,255,255,0.07)' }}>
+          <p className="text-[12px] text-text-tertiary">Suggestions non générées.</p>
+        </div>
+      )}
+      {suggestions.length > 0 && (
+        <div className="rounded-2xl p-5" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.14)' }}>
+          <h3 className="text-[13px] font-semibold text-emerald-400 uppercase tracking-widest mb-3">Suggestions pour répondre</h3>
+          <ul className="space-y-2">
+            {suggestions.map((s: string, i: number) => (
+              <li key={i} className="flex items-start gap-2 text-[12px] text-text-secondary leading-relaxed">
+                <span className="text-emerald-400 mt-0.5">•</span>
+                <span>{s}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Plan conseillé en 15 lignes */}
+      {answer.reasoning && recommendedPlan15Lines.length === 0 && (
+        <div className="rounded-2xl p-5" style={{ background: 'rgba(24,24,27,0.6)', border: '1px solid rgba(255,255,255,0.07)' }}>
+          <p className="text-[12px] text-text-tertiary">Plan de réponse non généré.</p>
+        </div>
+      )}
+      {recommendedPlan15Lines.length > 0 && (
+        <div className="rounded-2xl p-5" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.14)' }}>
+          <h3 className="text-[13px] font-semibold text-indigo-400 uppercase tracking-widest mb-3">Plan conseillé en 15 lignes</h3>
+          <ol className="space-y-2">
+            {recommendedPlan15Lines.map((p: string, i: number) => (
+              <li key={i} className="flex items-start gap-2 text-[12px] text-text-secondary leading-relaxed">
+                <span className="text-indigo-400 mt-0.5 font-bold">{i + 1}.</span>
+                <span>{p}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {/* Points à vérifier */}
+      {answer.reasoning && pointsToVerify.length === 0 && (
+        <div className="rounded-2xl p-5" style={{ background: 'rgba(24,24,27,0.6)', border: '1px solid rgba(255,255,255,0.07)' }}>
+          <p className="text-[12px] text-text-tertiary">Aucun point de vérification disponible.</p>
+        </div>
+      )}
+      {pointsToVerify.length > 0 && (
+        <div className="rounded-2xl p-5" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.14)' }}>
+          <h3 className="text-[13px] font-semibold text-amber-400 uppercase tracking-widest mb-3">Points à vérifier</h3>
+          <ul className="space-y-2">
+            {pointsToVerify.map((p: string, i: number) => (
+              <li key={i} className="flex items-start gap-2 text-[12px] text-text-secondary leading-relaxed">
+                <span className="text-amber-400 mt-0.5">✓</span>
+                <span>{p}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Pourquoi cette réponse (fallback for plain text reasoning) */}
+      {parsedReasoning.reasoningText && !suggestions.length && !recommendedPlan15Lines.length && (
         <div className="rounded-2xl p-5" style={{ background: 'rgba(24,24,27,0.6)', border: '1px solid rgba(255,255,255,0.07)' }}>
           <button onClick={() => setShowSources(!showSources)}
             className="flex items-center gap-1.5 text-[13px] font-semibold text-text-secondary uppercase tracking-widest hover:text-text-primary transition-colors mb-2">
-            <span>{showSources ? '▾' : '▸'}</span> Pourquoi cette réponse ?
+            <span>{showSources ? '▾' : '▸'}</span> Pourquoi cette analyse ?
           </button>
           {showSources && (
-            <p className="text-[13px] text-text-tertiary leading-relaxed">{answer.reasoning}</p>
+            <p className="text-[13px] text-text-tertiary leading-relaxed">{parsedReasoning.reasoningText}</p>
           )}
         </div>
       )}

@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 
-const API_BASE_URL = "http://localhost:5050";
+const API_BASE_URL = "https://taxe-id6h.onrender.com";
 const API = `${API_BASE_URL}/api`;
-const PUBLIC_APP_URL = "http://localhost:5173";
+const PUBLIC_APP_URL = "https://taxe-lake.vercel.app";
 
 export interface SessionData {
   session: any;
@@ -28,8 +28,11 @@ interface SessionContextType {
   mode: 'edit' | 'view';
   sessionData: SessionData | null;
   loading: boolean;
+  saving: boolean;
   error: string | null;
   isReadOnly: boolean;
+  backendOnline: boolean;
+  lastSavedAt: string | null;
   refreshSession: () => Promise<void>;
   createSession: () => Promise<void>;
   loadSession: (id: string) => Promise<void>;
@@ -71,7 +74,10 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const [mode, setMode] = useState<'edit' | 'view'>('edit');
   const [sessionData, setSessionData] = useState<SessionData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [backendOnline, setBackendOnline] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [pollingInterval, setPollingInterval] = useState<ReturnType<typeof setInterval> | null>(null);
 
   const isReadOnly = mode === 'view';
@@ -82,15 +88,25 @@ export function SessionProvider({ children }: SessionProviderProps) {
     const sessionFromUrl = urlParams.get('session');
     const modeFromUrl = urlParams.get('mode');
 
+    if (modeFromUrl === 'view') {
+      setMode('view');
+    }
+
     if (sessionFromUrl) {
       setSessionId(sessionFromUrl);
-      setMode(modeFromUrl === 'view' ? 'view' : 'edit');
       loadSession(sessionFromUrl);
     } else {
-      // Force new session creation when using production backend
-      localStorage.removeItem('current_session_id');
-      createSession();
+      const localSessionId = localStorage.getItem('current_session_id');
+      if (localSessionId) {
+        setSessionId(localSessionId);
+        loadSession(localSessionId);
+      } else {
+        createSession();
+      }
     }
+
+    // Check backend health
+    checkBackendHealth();
 
     return () => {
       if (pollingInterval) {
@@ -98,6 +114,40 @@ export function SessionProvider({ children }: SessionProviderProps) {
       }
     };
   }, []);
+
+  // Check backend health
+  const checkBackendHealth = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/health`);
+      setBackendOnline(response.ok);
+    } catch {
+      setBackendOnline(false);
+    }
+  };
+
+  // Save sessionId to localStorage when it changes
+  useEffect(() => {
+    if (sessionId) {
+      localStorage.setItem('current_session_id', sessionId);
+    }
+  }, [sessionId]);
+
+  // Poll for updates in view mode
+  useEffect(() => {
+    if (mode === 'view' && sessionId) {
+      const interval = setInterval(async () => {
+        const progress = await getProgress();
+        if (progress) {
+          const currentLastSaved = sessionData?.session?.updated_at;
+          if (progress.updatedAt !== currentLastSaved) {
+            await refreshSession();
+          }
+        }
+      }, 5000);
+      setPollingInterval(interval);
+      return () => clearInterval(interval);
+    }
+  }, [mode, sessionId, sessionData]);
 
   // Setup polling for spectator mode
   useEffect(() => {
@@ -172,7 +222,13 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   const refreshSession = async () => {
     if (sessionId) {
-      await loadSession(sessionId);
+      setSaving(true);
+      try {
+        await loadSession(sessionId);
+        setLastSavedAt(new Date().toISOString());
+      } finally {
+        setSaving(false);
+      }
     }
   };
 
@@ -367,8 +423,11 @@ export function SessionProvider({ children }: SessionProviderProps) {
     mode,
     sessionData,
     loading,
+    saving,
     error,
     isReadOnly,
+    backendOnline,
+    lastSavedAt,
     refreshSession,
     createSession,
     loadSession,

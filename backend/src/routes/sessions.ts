@@ -824,7 +824,7 @@ function extractQuestionsFromText(text: string): Array<{ number: number; text: s
   return questions;
 }
 
-// Helper function to generate answer with chunks
+// Helper function to generate answer with chunks (now returns suggestions, not final answers)
 async function generateAnswerWithChunks(question: string, chunks: any[], openai: any) {
   // Select relevant chunks (simplified)
   const relevantChunks = chunks.slice(0, 5);
@@ -837,29 +837,105 @@ async function generateAnswerWithChunks(question: string, chunks: any[], openai:
         role: 'system',
         content: `Tu es un assistant pédagogique spécialisé en fiscalité des sociétés israélienne.
         
-Règles :
-- Réponds en hébreu avec traduction française en bas (séparée par ---)
+Règles IMPORTANTES :
+- Tu es un assistant d'étude, PAS quelqu'un qui complète le devoir
+- NE rédige PAS de réponse finale prête à soumettre
+- Aide l'étudiant à comprendre et préparer son travail
 - Utilise uniquement les sources fournies
-- Structure : עובדות, כלל, יישום, מסקנה
-- Ne rédige pas de réponse finale prête à copier`
+- Ne invente PAS de règles, pages, articles ou faits
+- Donne des suggestions, structure et conseils
+- L'étudiant DOIT rédiger la réponse finale manuellement
+
+Pour chaque question, retourne un JSON avec :
+{
+  "cleanedHebrew": "question réécrite proprement en hébreu (même sens, formatage propre)",
+  "frenchUnderstanding": "explication en français de ce que la question demande",
+  "keywordsHebrew": ["mots-clés hébreu"],
+  "keywordsFrench": ["mots-clés français"],
+  "relevantSources": [
+    {
+      "page": numéro ou null,
+      "excerpt": "extrait utile",
+      "reason": "pourquoi cette source est utile"
+    }
+  ],
+  "suggestions": [
+    "Identifier le fait fiscal principal",
+    "Chercher si l'événement crée un revenu imposable",
+    "Vérifier le taux applicable",
+    "Vérifier si une exception existe",
+    "Conclure en appliquant la règle au cas"
+  ],
+  "recommendedPlan15Lines": [
+    "1. Présenter les faits",
+    "2. Identifier la règle fiscale",
+    "3. Citer la source pertinente",
+    "4. Appliquer la règle au cas",
+    "5. Conclure"
+  ],
+  "pointsToVerify": [
+    "vérifier la page source",
+    "ne pas inventer d'article",
+    "reformuler avec ses propres mots"
+  ],
+  "warnings": []
+}
+
+Si aucune source suffisante n'est trouvée, retourne :
+{
+  "cleanedHebrew": "...",
+  "frenchUnderstanding": "...",
+  "relevantSources": [],
+  "suggestions": ["Aucune source suffisante trouvée"],
+  "recommendedPlan15Lines": [],
+  "pointsToVerify": ["Vérifier si le sujet est couvert dans le document"],
+  "warnings": ["Aucune source suffisante trouvée dans le document"]
+}`
       },
       {
         role: 'user',
-        content: `Question: ${question}\n\nSources du document:\n${context}\n\nGénère une réponse structurée.`
+        content: `Question originale: ${question}\n\nSources du document:\n${context}\n\nGénère des suggestions pour aider l'étudiant à préparer sa réponse. Retourne uniquement du JSON valide.`
       }
     ],
-    temperature: 0.8
+    temperature: 0.7,
+    response_format: { type: "json_object" }
   });
 
-  const content = response.choices[0].message.content || '';
-  const [hebrew, french] = content.split('---').map((s: string) => s.trim());
-
-  return {
-    hebrew: hebrew || content,
-    french: french || '',
-    reasoning: 'Généré avec les sources fournies',
-    sources: relevantChunks.map(c => ({ chunkIndex: c.id, page: c.page, extract: c.text.substring(0, 200), documentName: 'Document de lois fiscales' }))
-  };
+  const content = response.choices[0].message.content || '{}';
+  
+  try {
+    const parsed = JSON.parse(content);
+    return {
+      hebrew: parsed.cleanedHebrew || question,
+      french: parsed.frenchUnderstanding || '',
+      reasoning: JSON.stringify({
+        keywordsHebrew: parsed.keywordsHebrew || [],
+        keywordsFrench: parsed.keywordsFrench || [],
+        suggestions: parsed.suggestions || [],
+        recommendedPlan15Lines: parsed.recommendedPlan15Lines || [],
+        pointsToVerify: parsed.pointsToVerify || [],
+        warnings: parsed.warnings || []
+      }),
+      sources: (parsed.relevantSources || []).map((s: any, i: number) => ({
+        chunkIndex: relevantChunks[i]?.id,
+        page: s.page || relevantChunks[i]?.page || null,
+        excerpt: s.excerpt || relevantChunks[i]?.text?.substring(0, 200) || '',
+        reason: s.reason || 'Source pertinente',
+        documentName: 'Document de lois fiscales'
+      }))
+    };
+  } catch (e) {
+    // Fallback if JSON parsing fails
+    return {
+      hebrew: question,
+      french: '',
+      reasoning: JSON.stringify({
+        suggestions: ['Erreur lors de l\'analyse'],
+        warnings: ['Veuillez réessayer']
+      }),
+      sources: []
+    };
+  }
 }
 
 // Helper function to verify answer
