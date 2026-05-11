@@ -13,6 +13,7 @@ const PORT = Number(process.env.PORT) || 5051;
 // CORS configuration - support Vercel frontend and preview deployments
 const allowedOrigins = [
   'https://taxe-lake.vercel.app',
+  'https://taxe-self.vercel.app',
   'http://localhost:5173',
   'http://localhost:5174'
 ].concat(

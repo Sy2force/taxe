@@ -42,6 +42,7 @@ interface SessionContextType {
   copySessionLink: () => void;
   copySpectatorLink: () => void;
   getProgress: () => Promise<ProgressData | null>;
+  ensureSession: () => Promise<string>;
   uploadExercise: (file: File) => Promise<void>;
   syncExercise: (data: { extractedText: string; questions: any[] }) => Promise<void>;
   uploadLaws: (file: File) => Promise<void>;
@@ -100,8 +101,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
     } else {
       const localSessionId = localStorage.getItem('current_session_id');
       if (localSessionId) {
-        setSessionId(localSessionId);
-        loadSession(localSessionId);
+        // Try to load existing session, if it fails create new one
+        loadSession(localSessionId).catch(() => {
+          console.warn('Session introuvable, création nouvelle session...');
+          localStorage.removeItem('current_session_id');
+          createSession();
+        });
       } else {
         createSession();
       }
@@ -283,28 +288,76 @@ export function SessionProvider({ children }: SessionProviderProps) {
     navigator.clipboard.writeText(link);
   };
 
-  const uploadExercise = async (file: File) => {
-    if (!sessionId) throw new Error('Aucune session active');
-    const formData = new FormData();
-    formData.append('file', file);
-    const url = `${API}/sessions/${sessionId}/upload-exercise`;
-    console.log("UPLOAD_EXERCISE_DEBUG", {
-      apiUrl: API_BASE_URL,
-      sessionId,
-      url,
-      fileName: file.name,
-      fileSize: file.size,
-      fileType: file.type
-    });
-    const response = await fetch(url, {
-      method: 'POST',
-      body: formData
-    });
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || 'Erreur lors de l\'upload de l\'exercice');
+  const ensureSession = async (): Promise<string> => {
+    // If we already have a valid sessionId, verify it exists
+    if (sessionId) {
+      try {
+        const response = await fetch(`${API}/sessions/${sessionId}`);
+        if (response.ok) {
+          return sessionId;
+        }
+        // Session doesn't exist, clear and recreate
+        localStorage.removeItem('current_session_id');
+      } catch (err) {
+        console.warn('Session validation failed, creating new session:', err);
+        localStorage.removeItem('current_session_id');
+      }
     }
-    await refreshSession();
+
+    // Create a new session
+    setLoading(true);
+    try {
+      const response = await fetch(`${API}/sessions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Session sans titre' })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Erreur HTTP: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      setSessionId(data.sessionId);
+      localStorage.setItem('current_session_id', data.sessionId);
+      await loadSession(data.sessionId);
+      setLoading(false);
+      return data.sessionId;
+    } catch (err) {
+      console.error('Erreur création session:', err);
+      setError('Impossible de se connecter au backend. Vérifiez que le serveur est démarré.');
+      setLoading(false);
+      throw new Error('Impossible de créer une session');
+    }
+  };
+
+  const uploadExercise = async (file: File) => {
+    try {
+      const validSessionId = await ensureSession();
+      const formData = new FormData();
+      formData.append('file', file);
+      const url = `${API}/sessions/${validSessionId}/upload-exercise`;
+      console.log("UPLOAD_EXERCISE_DEBUG", {
+        apiUrl: API_BASE_URL,
+        sessionId: validSessionId,
+        url,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type
+      });
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Erreur lors de l\'upload de l\'exercice');
+      }
+      await refreshSession();
+    } catch (err) {
+      console.error('Erreur upload exercise:', err);
+      throw err;
+    }
   };
 
   const uploadLaws = async (file: File) => {
@@ -475,6 +528,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     copySessionLink,
     copySpectatorLink,
     getProgress,
+    ensureSession,
     uploadExercise,
     syncExercise,
     uploadLaws,
