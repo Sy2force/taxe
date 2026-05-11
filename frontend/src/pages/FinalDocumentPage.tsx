@@ -5,7 +5,7 @@ import { Upload, CheckCircle, AlertCircle, Loader2, ArrowRight, ArrowLeft } from
 
 export default function FinalDocumentPage() {
   const navigate = useNavigate();
-  const { sessionId, sessionData, uploadFinalDocument, isReadOnly, backendOnline } = useSessionContext();
+  const { sessionData, uploadFinalDocument, isReadOnly, backendOnline } = useSessionContext();
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
@@ -22,9 +22,7 @@ export default function FinalDocumentPage() {
     setErrorMsg('');
     setWarning('');
     try {
-      if (!sessionId) {
-        throw new Error('Session introuvable. Rechargez la page pour créer une nouvelle session.');
-      }
+      // Use SessionContext to upload to backend (ensureSession is called internally)
       await uploadFinalDocument(f);
       const data = sessionData?.documents?.find((d: any) => d.type === 'final');
       if (!data) {
