@@ -8,6 +8,7 @@ import { analyzeQuestionLocally, correctAnswerLocally } from '../services/localA
 import { analyzeQuestionWithAI, correctAnswerWithAI, improveStyle, optimizeAnswer, isOpenAIEnabled, getOpenAIClient } from '../services/aiService.js';
 import { buildChunks, storeLawsChunks, getLawsChunks, getLawsDocumentName, getLawsTotalPages, clearLawsChunks, generateAnswerWithRAG, retrieveTopChunks, extractQueryTerms } from '../services/ragService.js';
 import { ETHICAL_WARNING, ANTI_FINAL_ANSWER_RESPONSE } from '../prompts.js';
+import { saveDocumentToDb, getAllDocumentsFromDb, clearAllDocumentsFromDb, saveGeneratedAnswer, getAllGeneratedAnswersFromDb, saveExerciseDocumentToDb, getExerciseDocumentFromDb, saveLawsDocumentToDb, getLawsDocumentFromDb } from '../services/database.js';
 
 const router = Router();
 
@@ -57,14 +58,16 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
     };
 
     saveDocument(document);
+    await saveDocumentToDb(document);
     res.json(document);
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Impossible de lire ce document.' });
   }
 });
 
-router.get('/documents', (req: Request, res: Response) => {
+router.get('/documents', async (req: Request, res: Response) => {
   const documents = getAllDocuments();
+  const dbDocuments = await getAllDocumentsFromDb();
   res.json(documents);
 });
 
@@ -189,7 +192,7 @@ router.post('/upload-exercise', upload.single('file'), async (req: Request, res:
       return res.status(400).json({ error: `Format non supporté : ${fileType}. Utilisez PDF, DOCX, DOC ou TXT.` });
     }
     const { text, pages } = await extractTextFromFile(req.file);
-    exerciseDocument = {
+    const exerciseDoc = {
       id: uuidv4(),
       name: req.file.originalname,
       type: fileType.slice(1) as 'pdf' | 'docx' | 'doc' | 'txt',
@@ -197,7 +200,9 @@ router.post('/upload-exercise', upload.single('file'), async (req: Request, res:
       content: text,
       uploadedAt: new Date().toISOString(),
     };
-    res.json({ ...exerciseDocument, chars: text.length });
+    exerciseDocument = exerciseDoc;
+    await saveExerciseDocumentToDb(exerciseDoc);
+    res.json({ ...exerciseDoc, chars: text.length });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de l\'import de l\'exercice' });
   }
@@ -227,6 +232,8 @@ router.post('/upload-laws', upload.single('file'), async (req: Request, res: Res
     // Clear old data, store new document
     clearAllDocuments();
     saveDocument(doc);
+    await saveDocumentToDb(doc);
+    await saveLawsDocumentToDb(doc);
     lawsDocument = doc;
     generatedAnswers.clear();
     // Build RAG chunks for accurate retrieval
@@ -291,6 +298,13 @@ router.post('/generate-answer', async (req: Request, res: Response) => {
       status: 'done',
     };
     generatedAnswers.set(questionId, result);
+    await saveGeneratedAnswer({
+      questionId,
+      question: questionText,
+      answer: ragResult.answer,
+      sources,
+      createdAt: new Date().toISOString()
+    });
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: 'Erreur lors de la génération de la réponse' });
@@ -927,6 +941,43 @@ ${instruction}`;
       success: false,
       error: error instanceof Error ? error.message : 'Erreur action IA',
     });
+  }
+});
+
+// Database routes - retrieve saved data
+router.get('/db/saved-answers', async (req: Request, res: Response) => {
+  try {
+    const answers = await getAllGeneratedAnswersFromDb();
+    res.json(answers);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de la récupération des réponses' });
+  }
+});
+
+router.get('/db/exercise-document', async (req: Request, res: Response) => {
+  try {
+    const doc = await getExerciseDocumentFromDb();
+    res.json(doc);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de la récupération du document d\'exercice' });
+  }
+});
+
+router.get('/db/laws-document', async (req: Request, res: Response) => {
+  try {
+    const doc = await getLawsDocumentFromDb();
+    res.json(doc);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de la récupération du document de lois' });
+  }
+});
+
+router.get('/db/all-documents', async (req: Request, res: Response) => {
+  try {
+    const docs = await getAllDocumentsFromDb();
+    res.json(docs);
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de la récupération des documents' });
   }
 });
 

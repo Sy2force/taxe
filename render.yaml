@@ -14,5 +14,14 @@ services:
         sync: false
       - key: ALLOWED_ORIGINS
         sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: correcteur-fiscalite-db
+          property: connectionString
     healthCheckPath: /health
     autoDeploy: true
+
+databases:
+  - name: correcteur-fiscalite-db
+    databaseName: correcteur_fiscalite
+    user: correcteur_fiscalite_user
