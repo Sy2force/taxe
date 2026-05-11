@@ -21,6 +21,7 @@
     "**/*.spec.ts",
     "tests",
     "e2e",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "src/**/legacy"
   ]
 }
