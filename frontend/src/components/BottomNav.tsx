@@ -1,12 +1,13 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { FileQuestion, BookOpen, MessageSquare, ShieldCheck, FileCheck } from 'lucide-react';
+import { FileQuestion, BookOpen, MessageSquare, FileText, ShieldCheck, FileCheck } from 'lucide-react';
 
 const navItems = [
-  { path: '/exercise',     icon: FileQuestion, label: 'Exercice',  color: 'from-violet-500 to-indigo-500' },
-  { path: '/laws',         icon: BookOpen,     label: 'Lois',      color: 'from-blue-500 to-cyan-500' },
-  { path: '/answers',      icon: MessageSquare,label: 'Suggestions',  color: 'from-emerald-500 to-teal-500' },
-  { path: '/verification', icon: ShieldCheck,  label: 'Vérif.',   color: 'from-amber-500 to-orange-500' },
-  { path: '/final',        icon: FileCheck,    label: 'Final',     color: 'from-rose-500 to-pink-500' },
+  { path: '/exercise',      icon: FileQuestion, label: 'Exercice', color: 'from-violet-500 to-indigo-500' },
+  { path: '/laws',          icon: BookOpen,     label: 'Lois',     color: 'from-blue-500 to-cyan-500' },
+  { path: '/answers',       icon: MessageSquare,label: 'Suggestions', color: 'from-emerald-500 to-teal-500' },
+  { path: '/final-document',icon: FileText,     label: 'Doc.',     color: 'from-purple-500 to-violet-500' },
+  { path: '/verification',  icon: ShieldCheck,  label: 'Corr.',    color: 'from-amber-500 to-orange-500' },
+  { path: '/final',         icon: FileCheck,    label: 'Final',    color: 'from-rose-500 to-pink-500' },
 ];
 
 export default function BottomNav() {

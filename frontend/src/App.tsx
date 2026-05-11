@@ -7,6 +7,7 @@ import LawsPage from './pages/LawsPage';
 import AnswersPage from './pages/AnswersPage';
 import VerificationPage from './pages/VerificationPage';
 import FinalCheckPage from './pages/FinalCheckPage';
+import FinalDocumentPage from './pages/FinalDocumentPage';
 import { SavedDataProvider } from './contexts/SavedDataContext';
 import { SessionProvider } from './contexts/SessionContext';
 
@@ -25,6 +26,7 @@ function App() {
                   <Route path="/exercise" element={<ExercisePage />} />
                   <Route path="/laws" element={<LawsPage />} />
                   <Route path="/answers" element={<AnswersPage />} />
+                  <Route path="/final-document" element={<FinalDocumentPage />} />
                   <Route path="/verification" element={<VerificationPage />} />
                   <Route path="/final" element={<FinalCheckPage />} />
                   <Route path="/final-check" element={<Navigate to="/final" replace />} />

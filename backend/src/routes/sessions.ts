@@ -744,6 +744,149 @@ router.post('/:sessionId/sync-laws', async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/sessions/:sessionId/upload-final-document - Upload completed assignment
+router.post('/:sessionId/upload-final-document', upload.single('file'), async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    const file = req.file;
+    
+    if (!file) {
+      return res.status(400).json({ error: 'Aucun fichier fourni' });
+    }
+
+    const session = await getSession(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session non trouvée' });
+    }
+
+    const { text, pages } = await extractTextFromFile(file);
+    
+    if (!text || text.trim().length < 100) {
+      return res.status(400).json({ error: 'Ce document semble être scanné ou vide. Aucun texte exploitable n\'a été trouvé.' });
+    }
+
+    const doc = {
+      id: uuidv4(),
+      sessionId,
+      type: 'final',
+      filename: file.originalname,
+      mimetype: file.mimetype,
+      extractedText: text,
+      characterCount: text.length,
+      pageCount: pages,
+      chunksCount: 0,
+      status: 'completed',
+      createdAt: new Date().toISOString()
+    };
+
+    await saveDocumentToSession(doc);
+
+    // Try to detect student answers
+    const answers = detectStudentAnswers(text);
+    
+    if (answers.length === 0) {
+      return res.json({
+        ...doc,
+        chars: text.length,
+        answersDetected: 0,
+        warning: 'Le document a été lu, mais les réponses n\'ont pas été détectées automatiquement. Vous pouvez les associer manuellement.'
+      });
+    }
+    
+    // Save detected answers
+    for (const answer of answers) {
+      await saveAnswerToSession({
+        id: uuidv4(),
+        sessionId,
+        questionId: answer.questionId,
+        hebrewAnswer: answer.studentAnswer,
+        frenchExplanation: '',
+        reasoning: '',
+        sources: [],
+        lineCount: answer.lineCount,
+        status: 'completed',
+        copied: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    }
+
+    res.json({
+      ...doc,
+      chars: text.length,
+      answersDetected: answers.length
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de l\'upload du document final' });
+  }
+});
+
+// POST /api/sessions/:sessionId/correct-final-document - Analyze completed document against laws
+router.post('/:sessionId/correct-final-document', async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    
+    const session = await getSession(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session non trouvée' });
+    }
+
+    const data = await getSessionData(sessionId);
+    const questions = data.questions;
+    const answers = data.answers.filter((a: any) => a.status === 'completed');
+    const chunks = data.chunks;
+
+    if (!isOpenAIEnabled()) {
+      return res.status(400).json({ error: 'OpenAI non configuré' });
+    }
+
+    const openai = getOpenAIClient();
+    if (!openai) {
+      return res.status(400).json({ error: 'OpenAI non configuré' });
+    }
+
+    const results = [];
+    for (const answer of answers) {
+      const question = questions.find((q: any) => q.id === answer.question_id);
+      if (!question) continue;
+
+      const correction = await correctAnswerWithChunks(
+        question.original_text || question.originalHebrew,
+        answer.hebrew_answer,
+        chunks,
+        openai
+      );
+
+      await saveFinalCheckToSession({
+        id: uuidv4(),
+        sessionId,
+        questionId: question.id,
+        score: correction.score,
+        status: correction.status,
+        issues: correction.issues,
+        corrections: correction.corrections,
+        sources: correction.sourcesUsed,
+        createdAt: new Date().toISOString()
+      });
+
+      results.push({
+        questionId: question.id,
+        questionNumber: question.number,
+        score: correction.score,
+        status: correction.status
+      });
+    }
+
+    res.json({
+      success: true,
+      corrected: results.length,
+      results
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de la correction du document final' });
+  }
+});
+
 // GET /api/sessions/:sessionId/final - Load final report
 router.get('/:sessionId/final', async (req: Request, res: Response) => {
   try {
@@ -1011,6 +1154,111 @@ Retourne JSON avec:
       {
         role: 'user',
         content: `Question: ${question}\n\nRéponse hébreu: ${hebrewAnswer}\n\nExplication française: ${frenchExplanation}\n\nSources utilisées: ${JSON.stringify(sources)}\n\nDocument de référence:\n${context}\n\nVérifie cette réponse et retourne le JSON.`
+      }
+    ],
+    temperature: 0.3,
+    response_format: { type: "json_object" }
+  });
+
+  const content = response.choices[0].message.content || '';
+  const result = JSON.parse(content);
+
+  return {
+    score: result.score || 0,
+    status: result.status || 'Non vérifiable',
+    issues: result.unsupportedPoints || [],
+    corrections: result.corrections || [],
+    sourcesUsed: result.sourcesUsed || []
+  };
+}
+
+// Helper function to detect student answers from completed document
+function detectStudentAnswers(text: string): Array<{ questionId: string; studentAnswer: string; lineCount: number }> {
+  const lines = text.split('\n');
+  const answers: Array<{ questionId: string; studentAnswer: string; lineCount: number }> = [];
+  let currentNumber = 1;
+  let currentText = '';
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    
+    // Detect question numbers in completed document
+    if (trimmed.match(/^שאלה\s+\d+/) || 
+        trimmed.match(/^Question\s+\d+/i) ||
+        trimmed.match(/^\d+\./)) {
+      if (currentText) {
+        answers.push({
+          questionId: currentNumber.toString(),
+          studentAnswer: currentText.trim(),
+          lineCount: currentText.split('\n').length
+        });
+        currentNumber++;
+      }
+      currentText = '';
+    } else if (trimmed.length > 0) {
+      currentText += (currentText ? '\n' : '') + trimmed;
+    }
+  }
+
+  if (currentText) {
+    answers.push({
+      questionId: currentNumber.toString(),
+      studentAnswer: currentText.trim(),
+      lineCount: currentText.split('\n').length
+    });
+  }
+
+  return answers;
+}
+
+// Helper function to correct student answer with chunks
+async function correctAnswerWithChunks(question: string, hebrewAnswer: string, chunks: any[], openai: any) {
+  // Select relevant chunks
+  const relevantChunks = chunks.slice(0, 5);
+  const context = relevantChunks.map(c => c.text).join('\n\n');
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      {
+        role: 'system',
+        content: `Tu es un assistant de vérification académique en droit fiscal.
+        
+Vérifie la réponse de l'étudiant en utilisant uniquement les sources fournies.
+Ne prétends pas que la réponse est garantie 100% correcte.
+Utilise la phrase : "Validation basée uniquement sur les sources fournises."
+
+Critères :
+- Compréhension de la question: 15 points
+- Règle fiscale identifiée: 20 points
+- Source pertinente trouvée: 20 points
+- Application au cas: 20 points
+- Calcul si nécessaire: 10 points
+- Conclusion claire: 10 points
+- Respect des 15 lignes: 5 points
+
+Pénalités :
+- Pas de source: max 50
+- Affirmation non supportée: max 60
+- Source inventée: max 30
+- Pas de conclusion: -10
+- Trop long: -5
+- Pas de calcul quand requis: -10
+
+Retourne JSON avec:
+- score (0-100)
+- status (Très solide, À améliorer, Source insuffisante, Réponse trop longue, Non vérifiable, Incomplète)
+- supportedPoints []
+- unsupportedPoints []
+- missingElements []
+- corrections []
+- improvedDraftHebrew
+- frenchExplanation
+- sourcesUsed []`
+      },
+      {
+        role: 'user',
+        content: `Question: ${question}\n\nRéponse hébreu: ${hebrewAnswer}\n\nDocument de référence:\n${context}\n\nVérifie cette réponse et retourne le JSON.`
       }
     ],
     temperature: 0.3,

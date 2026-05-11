@@ -46,6 +46,8 @@ interface SessionContextType {
   syncExercise: (data: { extractedText: string; questions: any[] }) => Promise<void>;
   uploadLaws: (file: File) => Promise<void>;
   syncLaws: (data: { extractedText: string; chunks: any[]; pageCount: number }) => Promise<void>;
+  uploadFinalDocument: (file: File) => Promise<void>;
+  correctFinalDocument: () => Promise<void>;
   validateQuestions: (questions: any[]) => Promise<void>;
   generateAnswer: (questionId: string) => Promise<void>;
   generateAllAnswers: () => Promise<void>;
@@ -329,6 +331,42 @@ export function SessionProvider({ children }: SessionProviderProps) {
     await refreshSession();
   };
 
+  const uploadFinalDocument = async (file: File) => {
+    if (!sessionId) throw new Error('Aucune session active');
+    const formData = new FormData();
+    formData.append('file', file);
+    const url = `${API}/sessions/${sessionId}/upload-final-document`;
+    console.log("UPLOAD_FINAL_DOCUMENT_DEBUG", {
+      apiUrl: API_BASE_URL,
+      sessionId,
+      url,
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type
+    });
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Erreur lors de l\'upload du document final');
+    }
+    await refreshSession();
+  };
+
+  const correctFinalDocument = async () => {
+    if (!sessionId) throw new Error('Aucune session active');
+    const response = await fetch(`${API}/sessions/${sessionId}/correct-final-document`, {
+      method: 'POST'
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Erreur lors de la correction du document final');
+    }
+    await refreshSession();
+  };
+
   const generateAnswer = async (questionId: string) => {
     if (!sessionId) throw new Error('Aucune session active');
     const response = await fetch(`${API}/sessions/${sessionId}/questions/${questionId}/generate`, {
@@ -441,6 +479,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
     syncExercise,
     uploadLaws,
     syncLaws,
+    uploadFinalDocument,
+    correctFinalDocument,
     validateQuestions,
     generateAnswer,
     generateAllAnswers,

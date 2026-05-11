@@ -31,13 +31,15 @@ const statusConfig: Record<FinalStatus, { label: string; color: string; icon: ty
 };
 
 export default function VerificationPage() {
-  const { sessionData, finalVerify } = useSessionContext();
+  const { sessionData, finalVerify, correctFinalDocument } = useSessionContext();
   const [verifying, setVerifying] = useState(false);
+  const [correcting, setCorrecting] = useState(false);
   const navigate = useNavigate();
 
   const questions = sessionData?.questions || [];
   const answers = sessionData?.answers || [];
   const finalChecks = sessionData?.finalChecks || [];
+  const finalDocument = sessionData?.documents?.find((d: any) => d.type === 'final');
   
   const answersMap = new Map(answers.map((a: AnswerData) => [a.question_id, a]));
   
@@ -53,6 +55,16 @@ export default function VerificationPage() {
       console.error('Verification failed:', err);
     }
     setVerifying(false);
+  };
+
+  const handleCorrect = async () => {
+    setCorrecting(true);
+    try {
+      await correctFinalDocument();
+    } catch (err) {
+      console.error('Correction failed:', err);
+    }
+    setCorrecting(false);
   };
 
   return (
@@ -123,6 +135,42 @@ export default function VerificationPage() {
               })}
             </div>
           </div>
+
+          {/* Final document correction section */}
+          {finalDocument && (
+            <div className="rounded-2xl p-5 mb-4" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-[13px] font-semibold text-emerald-400 tracking-tight">Document complété importé</p>
+                  <p className="text-[11px] text-text-muted mt-0.5">{finalDocument.filename}</p>
+                </div>
+                {finalChecks.length > 0 && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium"
+                    style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: '#34d399' }}>
+                    <CheckCircle className="w-3.5 h-3.5" /> {finalChecks.length} réponses corrigées
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                {!correcting && finalChecks.length === 0 && (
+                  <button onClick={handleCorrect}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold text-white"
+                    style={{ background: 'linear-gradient(135deg,#10b981,#059669)', boxShadow: '0 4px 16px rgba(16,185,129,0.25)' }}>
+                    Corriger le document
+                  </button>
+                )}
+                {correcting && (
+                  <div className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold text-text-tertiary">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Correction...
+                  </div>
+                )}
+                <button onClick={() => navigate('/final-document')}
+                  className="text-[11px] text-text-tertiary hover:text-text-secondary transition-colors">
+                  Réimporter
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Question rows */}
           <div className="space-y-3 mb-6">

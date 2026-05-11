@@ -15,6 +15,8 @@ export default function FinalCheckPage() {
   const answers = sessionData?.answers || [];
   const finalChecks = sessionData?.finalChecks || [];
   const finalReport = sessionData?.finalReport;
+  const finalDocument = sessionData?.documents?.find((d: any) => d.type === 'final');
+  const studentAnswers = sessionData?.answers?.filter((a: any) => a.status === 'completed') || [];
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -93,6 +95,33 @@ export default function FinalCheckPage() {
           </button>
         </div>
       </div>
+
+      {/* Final document section */}
+      {finalDocument && (
+        <div className="rounded-2xl p-5 mb-4" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-[13px] font-semibold text-emerald-400 tracking-tight">Document complété</p>
+              <p className="text-[11px] text-text-muted mt-0.5">{finalDocument.filename}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-[11px] text-text-muted">{finalDocument.character_count?.toLocaleString()} caractères</p>
+              <p className="text-[11px] text-text-muted">{studentAnswers.length} réponses détectées</p>
+            </div>
+          </div>
+          {finalChecks.length > 0 && (
+            <div className="rounded-xl p-3" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
+              <p className="text-[12px] font-semibold text-emerald-300 mb-2">Résultats de correction</p>
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] text-text-muted">Score moyen</p>
+                <p className="text-[18px] font-bold tabular-nums" style={{ color: avgScore >= 80 ? '#34d399' : avgScore >= 60 ? '#fbbf24' : '#fb923c' }}>
+                  {Math.round(avgScore)}/100
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {questions.length === 0 ? (
         <div className="flex flex-col items-center py-20">
