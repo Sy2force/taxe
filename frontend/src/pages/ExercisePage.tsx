@@ -69,8 +69,10 @@ export default function ExercisePage() {
     setShowManualMode(false);
     try {
       // Use SessionContext to upload to backend (ensureSession is called internally)
-      await uploadExercise(f);
-      const text = sessionData?.documents?.find((d: any) => d.type === 'exercise')?.extracted_text || '';
+      const uploadData = await uploadExercise(f);
+      
+      // Use the returned data directly instead of relying on sessionData
+      const text = uploadData.extracted_text || uploadData.extractedText || '';
       if (text.length === 0) {
         throw new Error('Le texte du document n\'a pas pu être extrait. Convertissez le fichier en .docx ou en PDF avec texte sélectionnable.');
       }

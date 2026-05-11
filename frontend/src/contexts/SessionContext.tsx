@@ -43,7 +43,7 @@ interface SessionContextType {
   copySpectatorLink: () => void;
   getProgress: () => Promise<ProgressData | null>;
   ensureSession: () => Promise<string>;
-  uploadExercise: (file: File) => Promise<void>;
+  uploadExercise: (file: File) => Promise<any>;
   syncExercise: (data: { extractedText: string; questions: any[] }) => Promise<void>;
   uploadLaws: (file: File) => Promise<void>;
   syncLaws: (data: { extractedText: string; chunks: any[]; pageCount: number }) => Promise<void>;
@@ -396,9 +396,11 @@ export function SessionProvider({ children }: SessionProviderProps) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || 'Erreur lors de l\'upload de l\'exercice');
       }
+      const data = await response.json();
       await refreshSession();
+      return data;
     } catch (err) {
-      console.error('Erreur upload exercise:', err);
+      console.error('Upload exercise error:', err);
       throw err;
     }
   };
