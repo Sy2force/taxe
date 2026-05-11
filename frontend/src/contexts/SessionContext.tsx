@@ -38,6 +38,13 @@ interface SessionContextType {
   copySessionLink: () => void;
   copySpectatorLink: () => void;
   getProgress: () => Promise<ProgressData | null>;
+  uploadExercise: (file: File) => Promise<void>;
+  uploadLaws: (file: File) => Promise<void>;
+  generateAnswer: (questionId: string) => Promise<void>;
+  generateAllAnswers: () => Promise<void>;
+  optimizeAnswer: (questionId: string, instruction: string) => Promise<void>;
+  finalVerify: () => Promise<void>;
+  resetSession: () => Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
@@ -218,6 +225,77 @@ export function SessionProvider({ children }: SessionProviderProps) {
     navigator.clipboard.writeText(link);
   };
 
+  const uploadExercise = async (file: File) => {
+    if (!sessionId) throw new Error('Aucune session active');
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${API}/sessions/${sessionId}/upload-exercise`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!response.ok) throw new Error('Erreur lors de l\'upload de l\'exercice');
+    await refreshSession();
+  };
+
+  const uploadLaws = async (file: File) => {
+    if (!sessionId) throw new Error('Aucune session active');
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${API}/sessions/${sessionId}/upload-laws`, {
+      method: 'POST',
+      body: formData
+    });
+    if (!response.ok) throw new Error('Erreur lors de l\'upload du document de lois');
+    await refreshSession();
+  };
+
+  const generateAnswer = async (questionId: string) => {
+    if (!sessionId) throw new Error('Aucune session active');
+    const response = await fetch(`${API}/sessions/${sessionId}/questions/${questionId}/generate`, {
+      method: 'POST'
+    });
+    if (!response.ok) throw new Error('Erreur lors de la génération de la réponse');
+    await refreshSession();
+  };
+
+  const generateAllAnswers = async () => {
+    if (!sessionId) throw new Error('Aucune session active');
+    const response = await fetch(`${API}/sessions/${sessionId}/generate-all-answers`, {
+      method: 'POST'
+    });
+    if (!response.ok) throw new Error('Erreur lors de la génération des réponses');
+    await refreshSession();
+  };
+
+  const optimizeAnswer = async (questionId: string, instruction: string) => {
+    if (!sessionId) throw new Error('Aucune session active');
+    const response = await fetch(`${API}/sessions/${sessionId}/questions/${questionId}/optimize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instruction })
+    });
+    if (!response.ok) throw new Error('Erreur lors de l\'optimisation de la réponse');
+    await refreshSession();
+  };
+
+  const finalVerify = async () => {
+    if (!sessionId) throw new Error('Aucune session active');
+    const response = await fetch(`${API}/sessions/${sessionId}/final-verify`, {
+      method: 'POST'
+    });
+    if (!response.ok) throw new Error('Erreur lors de la vérification finale');
+    await refreshSession();
+  };
+
+  const resetSession = async () => {
+    if (!sessionId) throw new Error('Aucune session active');
+    const response = await fetch(`${API}/sessions/${sessionId}/reset`, {
+      method: 'POST'
+    });
+    if (!response.ok) throw new Error('Erreur lors de la réinitialisation de la session');
+    await refreshSession();
+  };
+
   const value: SessionContextType = {
     sessionId,
     mode,
@@ -233,7 +311,14 @@ export function SessionProvider({ children }: SessionProviderProps) {
     getSpectatorLink,
     copySessionLink,
     copySpectatorLink,
-    getProgress
+    getProgress,
+    uploadExercise,
+    uploadLaws,
+    generateAnswer,
+    generateAllAnswers,
+    optimizeAnswer,
+    finalVerify,
+    resetSession
   };
 
   return (
