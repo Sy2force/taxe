@@ -510,21 +510,15 @@ export default function ExercisePage() {
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
                   <div className="flex items-center gap-3">
-                    <span className="w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold flex-shrink-0 tabular-nums"
-                      style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.2)' }}>
-                      {q.id}
-                    </span>
-                    <span className="text-[11px] px-2 py-0.5 rounded" style={{
-                      background: q.status === 'validated' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
-                      color: q.status === 'validated' ? '#34d399' : '#fbbf24',
-                      border: q.status === 'validated' ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(245,158,11,0.2)'
-                    }}>
-                      {q.status === 'validated' ? 'Validée' : 'À vérifier'}
-                    </span>
+                    <span className="text-[13px] font-semibold text-text-secondary">Question {q.id}</span>
                   </div>
                   <div className="flex items-center gap-2">
+                    <button onClick={() => setShowRawText(v => !v)}
+                      className="flex items-center gap-1 text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors">
+                      <Eye className="w-3 h-3" /> Voir texte extrait
+                    </button>
                     <button onClick={() => deleteQuestion(q.id)}
-                      className="p-1 text-zinc-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100">
+                      className="p-1 text-zinc-700 hover:text-red-400 transition-colors">
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -532,7 +526,7 @@ export default function ExercisePage() {
 
                 {/* Hebrew original */}
                 <div className="px-4 py-3">
-                  <div className="text-[11px] font-medium text-text-tertiary mb-2">Texte original en hébreu:</div>
+                  <div className="text-[11px] font-medium text-text-tertiary mb-2">Hébreu:</div>
                   <textarea
                     value={q.originalHebrew}
                     onChange={e => updateQuestion(q.id, e.target.value)}
@@ -543,56 +537,33 @@ export default function ExercisePage() {
                   />
                 </div>
 
-                {/* Cleaned Hebrew rewrite */}
+                {/* French translation */}
                 <div className="px-4 py-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-                  <div className="text-[11px] font-medium text-text-tertiary mb-2">Question réécrite proprement en hébreu:</div>
+                  <div className="text-[11px] font-medium text-text-tertiary mb-2">Français:</div>
                   <textarea
-                    value={q.cleanedHebrew || ''}
+                    value={q.frenchTranslation || ''}
                     onChange={e => {
-                      const updated = questions.map(qq => qq.id === q.id ? { ...qq, cleanedHebrew: e.target.value } : qq);
-                      setQuestions(updated);
-                    }}
-                    rows={Math.min(4, Math.max(2, (q.cleanedHebrew || '').split('\n').length + 1))}
-                    dir="rtl"
-                    className="w-full bg-zinc-950/60 text-[13px] text-text-primary p-3 rounded-lg focus:outline-none resize-none leading-relaxed placeholder:text-zinc-700 text-right"
-                    placeholder="Non encore généré..."
-                  />
-                </div>
-
-                {/* French understanding */}
-                <div className="px-4 py-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-                  <div className="text-[11px] font-medium text-text-tertiary mb-2">Compréhension en français:</div>
-                  <textarea
-                    value={q.frenchUnderstanding || ''}
-                    onChange={e => {
-                      const updated = questions.map(qq => qq.id === q.id ? { ...qq, frenchUnderstanding: e.target.value } : qq);
+                      const updated = questions.map(qq => qq.id === q.id ? { ...qq, frenchTranslation: e.target.value } : qq);
                       setQuestions(updated);
                     }}
                     rows={3}
                     dir="ltr"
                     className="w-full bg-zinc-950/60 text-[13px] text-text-primary p-3 rounded-lg focus:outline-none resize-none leading-relaxed placeholder:text-zinc-700"
-                    placeholder="Compréhension non encore disponible..."
+                    placeholder="Traduction française..."
                   />
                 </div>
 
                 {/* Footer with buttons */}
                 <div className="px-4 py-3 border-t flex items-center justify-between" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
                   <div className="text-[10px] text-text-tertiary">
-                    Limite: {q.answerLimitLines} lignes
+                    {q.originalHebrew.length} caractères
                   </div>
                   <div className="flex gap-2">
-                    {q.status !== 'validated' && (
-                      <button
-                        onClick={() => {
-                          const updated = questions.map(qq => qq.id === q.id ? { ...qq, status: 'validated' as const } : qq);
-                          setQuestions(updated);
-                        }}
-                        className="px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
-                        style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', color: '#34d399' }}
-                      >
-                        Valider
-                      </button>
-                    )}
+                    <button onClick={() => setShowRawText(v => !v)}
+                      className="px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                      style={{ background: 'rgba(39,39,42,0.8)', border: '1px solid rgba(255,255,255,0.08)', color: '#a1a1aa' }}>
+                      Modifier
+                    </button>
                   </div>
                 </div>
               </div>
@@ -618,7 +589,7 @@ export default function ExercisePage() {
               background: 'linear-gradient(135deg,#6366f1,#4f46e5)',
               boxShadow: '0 0 0 1px rgba(99,102,241,0.3), 0 4px 16px rgba(99,102,241,0.25)',
             }}>
-            Lois fiscales
+            Continuer vers Lois fiscales
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
