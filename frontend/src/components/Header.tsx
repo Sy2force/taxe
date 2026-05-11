@@ -138,19 +138,6 @@ export default function Header() {
                 <Share2 className="w-3 h-3" />
                 <span className="hidden sm:inline">Lecture seule</span>
               </button>
-              <button
-                onClick={() => {
-                  const link = `http://localhost:5173/answers?session=${sessionId}`;
-                  navigator.clipboard.writeText(link);
-                  alert('Le lien local fonctionne uniquement sur votre ordinateur. Pour partager, utilisez le lien Vercel.');
-                }}
-                className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full text-[11px] font-medium transition-all"
-                style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', color: '#fbbf24' }}
-                title="Copier le lien local (debug)"
-              >
-                <Copy className="w-3 h-3" />
-                <span className="hidden sm:inline">Local</span>
-              </button>
             </>
           )}
 

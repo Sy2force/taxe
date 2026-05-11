@@ -4,6 +4,12 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5050";
 const API = `${API_BASE_URL}/api`;
 const PUBLIC_APP_URL = import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin;
 
+console.log('=== SessionContext Debug ===');
+console.log('VITE_API_URL:', import.meta.env.VITE_API_URL);
+console.log('API_BASE_URL:', API_BASE_URL);
+console.log('API:', API);
+console.log('============================');
+
 export interface SessionData {
   session: any;
   documents: any[];
@@ -131,28 +137,28 @@ export function SessionProvider({ children }: SessionProviderProps) {
   const createSession = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API}/sessions`, {
+      const url = `${API}/sessions`;
+      console.log('Creating session at:', url);
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: 'Session sans titre' })
       });
       
+      console.log('Response status:', response.status);
       if (!response.ok) {
         throw new Error(`Erreur HTTP: ${response.status}`);
       }
       
       const data = await response.json();
+      console.log('Session created:', data);
       setSessionId(data.sessionId);
       localStorage.setItem('current_session_id', data.sessionId);
       await loadSession(data.sessionId);
     } catch (err) {
       console.error('Erreur création session:', err);
-      setError('Erreur lors de la création de session');
+      setError('Impossible de se connecter au backend. Vérifiez que le serveur est démarré.');
       setLoading(false);
-      // Fallback to local-only session
-      const localSessionId = `local_${Date.now()}`;
-      setSessionId(localSessionId);
-      localStorage.setItem('current_session_id', localSessionId);
     }
   };
 
