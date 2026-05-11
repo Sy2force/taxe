@@ -115,7 +115,19 @@ export default function Header() {
                 title="Copier le lien de session"
               >
                 <Copy className="w-3 h-3" />
-                <span className="hidden sm:inline">Copier le lien</span>
+                <span className="hidden sm:inline">Session</span>
+              </button>
+              <button
+                onClick={() => {
+                  const link = `${import.meta.env.VITE_PUBLIC_APP_URL || 'http://localhost:5173'}/answers?session=${sessionId}`;
+                  navigator.clipboard.writeText(link);
+                }}
+                className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full text-[11px] font-medium transition-all"
+                style={{ background: 'rgba(39,39,42,0.8)', border: '1px solid rgba(255,255,255,0.08)', color: '#a1a1aa' }}
+                title="Copier le lien réponses"
+              >
+                <Copy className="w-3 h-3" />
+                <span className="hidden sm:inline">Réponses</span>
               </button>
               <button
                 onClick={copySpectatorLink}
@@ -124,7 +136,20 @@ export default function Header() {
                 title="Partager en lecture seule"
               >
                 <Share2 className="w-3 h-3" />
-                <span className="hidden sm:inline">Partager</span>
+                <span className="hidden sm:inline">Lecture seule</span>
+              </button>
+              <button
+                onClick={() => {
+                  const link = `http://localhost:5173/answers?session=${sessionId}`;
+                  navigator.clipboard.writeText(link);
+                  alert('Le lien local fonctionne uniquement sur votre ordinateur. Pour partager, utilisez le lien Vercel.');
+                }}
+                className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full text-[11px] font-medium transition-all"
+                style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', color: '#fbbf24' }}
+                title="Copier le lien local (debug)"
+              >
+                <Copy className="w-3 h-3" />
+                <span className="hidden sm:inline">Local</span>
               </button>
             </>
           )}

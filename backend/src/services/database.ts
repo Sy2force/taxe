@@ -212,6 +212,19 @@ function initSQLite(db: Database.Database) {
       FOREIGN KEY (document_id) REFERENCES documents(id)
     )
   `);
+
+  // Final reports table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS final_reports (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      summary_json TEXT,
+      final_text TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT,
+      FOREIGN KEY (session_id) REFERENCES sessions(id)
+    )
+  `);
 }
 
 async function initPostgreSQL(pool: Pool) {
@@ -370,6 +383,18 @@ async function initPostgreSQL(pool: Pool) {
       created_at TEXT NOT NULL,
       FOREIGN KEY (session_id) REFERENCES sessions(id),
       FOREIGN KEY (document_id) REFERENCES documents(id)
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS final_reports (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      summary_json JSONB,
+      final_text TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT,
+      FOREIGN KEY (session_id) REFERENCES sessions(id)
     )
   `);
 }
@@ -893,6 +918,7 @@ export async function getSessionData(sessionId: string) {
       const answers = await client.query('SELECT * FROM answers WHERE session_id = $1', [sessionId]);
       const finalChecks = await client.query('SELECT * FROM final_checks WHERE session_id = $1', [sessionId]);
       const chunks = await client.query('SELECT * FROM document_chunks WHERE session_id = $1 ORDER BY chunk_index', [sessionId]);
+      const finalReport = await client.query('SELECT * FROM final_reports WHERE session_id = $1', [sessionId]);
 
       return {
         session: session.rows[0] || null,
@@ -900,7 +926,8 @@ export async function getSessionData(sessionId: string) {
         questions: questions.rows,
         answers: answers.rows,
         finalChecks: finalChecks.rows,
-        chunks: chunks.rows
+        chunks: chunks.rows,
+        finalReport: finalReport.rows[0] || null
       };
     } finally {
       client.release();
@@ -913,6 +940,7 @@ export async function getSessionData(sessionId: string) {
     const answers = sqlite.prepare('SELECT * FROM answers WHERE session_id = ?').all(sessionId) as any[];
     const finalChecks = sqlite.prepare('SELECT * FROM final_checks WHERE session_id = ?').all(sessionId) as any[];
     const chunks = sqlite.prepare('SELECT * FROM document_chunks WHERE session_id = ? ORDER BY chunk_index').all(sessionId) as any[];
+    const finalReport = sqlite.prepare('SELECT * FROM final_reports WHERE session_id = ?').get(sessionId) as any;
 
     return {
       session,
@@ -920,7 +948,8 @@ export async function getSessionData(sessionId: string) {
       questions,
       answers,
       finalChecks,
-      chunks
+      chunks,
+      finalReport: finalReport || null
     };
   }
 }

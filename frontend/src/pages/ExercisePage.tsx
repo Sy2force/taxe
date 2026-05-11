@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, FileText, CheckCircle, AlertCircle, ChevronRight, Plus, Trash2, Loader2, Eye, Scissors, Copy, Share2 } from 'lucide-react';
 import { useSessionContext } from '../contexts/SessionContext';
@@ -19,32 +19,13 @@ export default function ExercisePage() {
     sessionId,
     sessionData,
     isReadOnly,
-    uploadExercise
+    uploadExercise,
+    validateQuestions
   } = useSessionContext();
 
   const [uploading, setUploading] = useState(false);
   const [extractedText, setExtractedText] = useState('');
-  const [questions, setQuestions] = useState<DetectedQuestion[]>(() => {
-    try {
-      const saved = localStorage.getItem('exercise_questions');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      // Handle old format with 'text' field
-      if (parsed.length > 0 && 'text' in parsed[0]) {
-        return parsed.map((q: any, i: number) => ({
-          id: q.id || i + 1,
-          originalHebrew: q.text || '',
-          frenchTranslation: '',
-          frenchUnderstanding: '',
-          points: '',
-          answerLimitLines: 15,
-          bullets: q.bullets || [],
-          status: 'detected' as const
-        }));
-      }
-      return parsed;
-    } catch { return []; }
-  });
+  const [questions, setQuestions] = useState<DetectedQuestion[]>([]);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const [fileInfo, setFileInfo] = useState<{ name: string; chars: number } | null>(null);
@@ -70,11 +51,6 @@ export default function ExercisePage() {
       setQuestions(sessionQuestions);
     }
   }, [sessionData]);
-
-  const saveAndSet = useCallback((qs: DetectedQuestion[]) => {
-    setQuestions(qs);
-    localStorage.setItem('exercise_questions', JSON.stringify(qs));
-  }, []);
 
   const handleUpload = async (f: File) => {
     setUploading(true);
@@ -131,19 +107,36 @@ export default function ExercisePage() {
       bullets: [],
       status: 'detected' as const
     }));
-    saveAndSet(qs);
+    setQuestions(qs);
     setShowManualMode(false);
     setStatus('success');
   };
 
-  const updateQuestion = (id: number, originalHebrew: string) => {
+  const updateQuestion = async (id: number, originalHebrew: string) => {
     const updated = questions.map(q => q.id === id ? { ...q, originalHebrew } : q);
-    saveAndSet(updated);
+    setQuestions(updated);
+    // Call validateQuestions to sync with backend if session exists
+    if (sessionId) {
+      try {
+        await validateQuestions(updated.map(q => ({
+          id: q.id.toString(),
+          original_text: q.originalHebrew,
+          frenchTranslation: q.frenchTranslation,
+          frenchUnderstanding: q.frenchUnderstanding,
+          points: q.points,
+          answerLimitLines: q.answerLimitLines,
+          bullets: q.bullets,
+          status: q.status
+        })));
+      } catch (err) {
+        console.error('Failed to validate questions:', err);
+      }
+    }
   };
 
   const deleteQuestion = (id: number) => {
     const updated = questions.filter(q => q.id !== id).map((q, i) => ({ ...q, id: i + 1 }));
-    saveAndSet(updated);
+    setQuestions(updated);
   };
 
   const addQuestion = () => {
@@ -157,7 +150,7 @@ export default function ExercisePage() {
       bullets: [],
       status: 'detected' as const
     }];
-    saveAndSet(qs);
+    setQuestions(qs);
   };
 
   const splitBySeparator = (separator: string) => {
@@ -172,7 +165,7 @@ export default function ExercisePage() {
       bullets: [],
       status: 'detected' as const
     }));
-    saveAndSet(detected);
+    setQuestions(detected);
     setShowManualMode(false);
   };
 
@@ -298,7 +291,7 @@ export default function ExercisePage() {
               <p className="text-[13px] font-semibold text-text-primary tracking-tight">Exercice importé</p>
               <p className="text-[11px] text-text-muted mt-0.5">{fileInfo.name}</p>
             </div>
-            <button onClick={() => { setStatus('idle'); saveAndSet([]); setExtractedText(''); setManualText(''); setFileInfo(null); }}
+            <button onClick={() => { setStatus('idle'); setQuestions([]); setExtractedText(''); setManualText(''); setFileInfo(null); }}
               className="text-[11px] text-zinc-600 hover:text-zinc-400 transition-colors">Changer</button>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -513,7 +506,7 @@ export default function ExercisePage() {
                     value={q.frenchTranslation}
                     onChange={e => {
                       const updated = questions.map(qq => qq.id === q.id ? { ...qq, frenchTranslation: e.target.value } : qq);
-                      saveAndSet(updated);
+                      setQuestions(updated);
                     }}
                     rows={3}
                     dir="ltr"
@@ -532,7 +525,7 @@ export default function ExercisePage() {
                       <button
                         onClick={() => {
                           const updated = questions.map(qq => qq.id === q.id ? { ...qq, status: 'validated' as const } : qq);
-                          saveAndSet(updated);
+                          setQuestions(updated);
                         }}
                         className="px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
                         style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', color: '#34d399' }}

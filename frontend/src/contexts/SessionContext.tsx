@@ -11,6 +11,7 @@ export interface SessionData {
   answers: any[];
   finalChecks: any[];
   chunks: any[];
+  finalReport: any;
 }
 
 export interface ProgressData {
@@ -39,11 +40,15 @@ interface SessionContextType {
   copySpectatorLink: () => void;
   getProgress: () => Promise<ProgressData | null>;
   uploadExercise: (file: File) => Promise<void>;
+  syncExercise: (data: { extractedText: string; questions: any[] }) => Promise<void>;
   uploadLaws: (file: File) => Promise<void>;
+  syncLaws: (data: { extractedText: string; chunks: any[]; pageCount: number }) => Promise<void>;
+  validateQuestions: (questions: any[]) => Promise<void>;
   generateAnswer: (questionId: string) => Promise<void>;
   generateAllAnswers: () => Promise<void>;
   optimizeAnswer: (questionId: string, instruction: string) => Promise<void>;
   finalVerify: () => Promise<void>;
+  generateFinalReport: () => Promise<void>;
   resetSession: () => Promise<void>;
 }
 
@@ -296,6 +301,48 @@ export function SessionProvider({ children }: SessionProviderProps) {
     await refreshSession();
   };
 
+  const syncExercise = async (data: { extractedText: string; questions: any[] }) => {
+    if (!sessionId) throw new Error('Aucune session active');
+    const response = await fetch(`${API}/sessions/${sessionId}/sync-exercise`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) throw new Error('Erreur lors de la synchronisation de l\'exercice');
+    await refreshSession();
+  };
+
+  const syncLaws = async (data: { extractedText: string; chunks: any[]; pageCount: number }) => {
+    if (!sessionId) throw new Error('Aucune session active');
+    const response = await fetch(`${API}/sessions/${sessionId}/sync-laws`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (!response.ok) throw new Error('Erreur lors de la synchronisation des lois');
+    await refreshSession();
+  };
+
+  const validateQuestions = async (questions: any[]) => {
+    if (!sessionId) throw new Error('Aucune session active');
+    const response = await fetch(`${API}/sessions/${sessionId}/questions/validate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questions })
+    });
+    if (!response.ok) throw new Error('Erreur lors de la validation des questions');
+    await refreshSession();
+  };
+
+  const generateFinalReport = async () => {
+    if (!sessionId) throw new Error('Aucune session active');
+    const response = await fetch(`${API}/sessions/${sessionId}/final`, {
+      method: 'POST'
+    });
+    if (!response.ok) throw new Error('Erreur lors de la génération du rapport final');
+    await refreshSession();
+  };
+
   const value: SessionContextType = {
     sessionId,
     mode,
@@ -313,11 +360,15 @@ export function SessionProvider({ children }: SessionProviderProps) {
     copySpectatorLink,
     getProgress,
     uploadExercise,
+    syncExercise,
     uploadLaws,
+    syncLaws,
+    validateQuestions,
     generateAnswer,
     generateAllAnswers,
     optimizeAnswer,
     finalVerify,
+    generateFinalReport,
     resetSession
   };
 

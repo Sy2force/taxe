@@ -1,17 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle, XCircle, AlertCircle, ChevronLeft } from 'lucide-react';
-
-interface Question {
-  id: number;
-  text: string;
-}
+import { CheckCircle, XCircle, AlertCircle, ChevronLeft, Loader2 } from 'lucide-react';
+import { useSessionContext } from '../contexts/SessionContext';
 
 interface AnswerData {
-  questionId: number;
-  answer: string;
-  sources: { extract: string; page?: number; documentName: string }[];
-  status: 'loading' | 'done' | 'no_source' | 'error';
+  question_id: string;
+  hebrew_answer: string;
+  sources_json: any[];
+  status: string;
   copied: boolean;
 }
 
@@ -19,10 +15,10 @@ type FinalStatus = 'ready' | 'verify' | 'no_source' | 'too_long' | 'not_generate
 
 function getFinalStatus(a: AnswerData | undefined): FinalStatus {
   if (!a || a.status === 'error' || a.status === 'loading') return 'not_generated';
-  if (a.status === 'no_source' || !a.sources || a.sources.length === 0) return 'no_source';
-  const lines = a.answer.split('\n').filter(l => l.trim()).length;
+  if (a.status === 'no_source' || !a.sources_json || a.sources_json.length === 0) return 'no_source';
+  const lines = a.hebrew_answer.split('\n').filter(l => l.trim()).length;
   if (lines > 15) return 'too_long';
-  if (a.status === 'done' && a.answer.length > 20) return 'ready';
+  if (a.status === 'completed' && a.hebrew_answer.length > 20) return 'ready';
   return 'verify';
 }
 
@@ -34,32 +30,29 @@ const statusConfig: Record<FinalStatus, { label: string; color: string; icon: ty
   not_generated: { label: 'Non générée', color: 'text-text-tertiary', icon: XCircle },
 };
 
-function loadQuestions(): Question[] {
-  try {
-    const raw = localStorage.getItem('exercise_questions');
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-function loadAnswersMap(): Map<number, AnswerData> {
-  try {
-    const raw = localStorage.getItem('answers_data');
-    if (!raw) return new Map();
-    const obj: Record<string, AnswerData> = JSON.parse(raw);
-    const map = new Map<number, AnswerData>();
-    Object.entries(obj).forEach(([k, v]) => map.set(Number(k), v));
-    return map;
-  } catch { return new Map(); }
-}
-
 export default function VerificationPage() {
-  const [questions] = useState<Question[]>(loadQuestions);
-  const [answersMap] = useState<Map<number, AnswerData>>(loadAnswersMap);
+  const { sessionData, finalVerify } = useSessionContext();
+  const [verifying, setVerifying] = useState(false);
   const navigate = useNavigate();
 
+  const questions = sessionData?.questions || [];
+  const answers = sessionData?.answers || [];
+  
+  const answersMap = new Map(answers.map((a: AnswerData) => [a.question_id, a]));
+  
   const ready = questions.filter(q => getFinalStatus(answersMap.get(q.id)) === 'ready').length;
   const total = questions.length;
   const pct = total > 0 ? Math.round((ready / total) * 100) : 0;
+
+  const handleVerify = async () => {
+    setVerifying(true);
+    try {
+      await finalVerify();
+    } catch (err) {
+      console.error('Verification failed:', err);
+    }
+    setVerifying(false);
+  };
 
   return (
     <div className="min-h-screen px-4 sm:px-6 lg:px-8 py-6 sm:py-10 max-w-3xl mx-auto">
@@ -137,9 +130,9 @@ export default function VerificationPage() {
               const finalStatus = getFinalStatus(a);
               const cfg = statusConfig[finalStatus];
               const StatusIcon = cfg.icon;
-              const lines = a?.answer ? a.answer.split('\n').filter(l => l.trim()).length : 0;
-              const hasAnswer = !!a?.answer && a.answer.length > 10;
-              const hasSource = (a?.sources?.length || 0) > 0;
+              const lines = a?.hebrew_answer ? a.hebrew_answer.split('\n').filter(l => l.trim()).length : 0;
+              const hasAnswer = !!a?.hebrew_answer && a.hebrew_answer.length > 10;
+              const hasSource = (a?.sources_json?.length || 0) > 0;
               const within15 = lines <= 15 && lines > 0;
 
               return (
@@ -153,7 +146,7 @@ export default function VerificationPage() {
                   </span>
 
                   {/* Question text */}
-                  <span className="flex-1 text-[12px] text-text-tertiary truncate">{q.text.substring(0, 55)}{q.text.length > 55 ? '…' : ''}</span>
+                  <span className="flex-1 text-[12px] text-text-tertiary truncate">{q.original_text.substring(0, 55)}{q.original_text.length > 55 ? '…' : ''}</span>
 
                   {/* Checks — hidden on mobile, visible sm+ */}
                   <div className="hidden sm:flex items-center gap-3 flex-shrink-0">
@@ -190,12 +183,26 @@ export default function VerificationPage() {
               style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
               <ChevronLeft className="w-4 h-4" /> Réponses
             </button>
-            {pct === 100 && (
-              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold"
-                style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: '#34d399' }}>
-                <CheckCircle className="w-4 h-4" /> Toutes les réponses sont prêtes
-              </div>
-            )}
+            <div className="flex items-center gap-3">
+              {!verifying && (
+                <button onClick={handleVerify}
+                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-semibold text-white"
+                  style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow: '0 4px 16px rgba(99,102,241,0.25)' }}>
+                  Lancer la vérification
+                </button>
+              )}
+              {verifying && (
+                <div className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-semibold text-text-tertiary">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Vérification...
+                </div>
+              )}
+              {pct === 100 && sessionData?.finalChecks && sessionData.finalChecks.length > 0 && (
+                <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold"
+                  style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: '#34d399' }}>
+                  <CheckCircle className="w-4 h-4" /> Vérifié
+                </div>
+              )}
+            </div>
           </div>
         </>
       )}

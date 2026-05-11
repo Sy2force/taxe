@@ -5,6 +5,8 @@ import path from 'path';
 import { extractTextFromFile } from '../services/documentService.js';
 import { buildChunks } from '../services/ragService.js';
 import { isOpenAIEnabled, getOpenAIClient } from '../services/aiService.js';
+import { Pool } from 'pg';
+import Database from 'better-sqlite3';
 import {
   createSession,
   getSession,
@@ -14,7 +16,8 @@ import {
   saveQuestionToSession,
   saveAnswerToSession,
   saveFinalCheckToSession,
-  saveDocumentChunkToSession
+  saveDocumentChunkToSession,
+  getDatabase
 } from '../services/database.js';
 
 const router = Router();
@@ -339,6 +342,124 @@ router.post('/:sessionId/questions/:questionId/generate', async (req: Request, r
   }
 });
 
+// POST /api/sessions/:sessionId/questions/:questionId/optimize - Optimize answer with instruction
+router.post('/:sessionId/questions/:questionId/optimize', async (req: Request, res: Response) => {
+  try {
+    const { sessionId, questionId } = req.params;
+    const { instruction } = req.body;
+    
+    const session = await getSession(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session non trouvée' });
+    }
+
+    const data = await getSessionData(sessionId);
+    const question = data.questions.find((q: any) => q.id === questionId);
+    const existingAnswer = data.answers.find((a: any) => a.question_id === questionId);
+    const chunks = data.chunks;
+
+    if (!question) {
+      return res.status(404).json({ error: 'Question non trouvée' });
+    }
+
+    if (!existingAnswer) {
+      return res.status(400).json({ error: 'Aucune réponse existante à optimiser' });
+    }
+
+    if (!isOpenAIEnabled()) {
+      return res.status(400).json({ error: 'OpenAI non configuré' });
+    }
+
+    const openai = getOpenAIClient();
+    if (!openai) {
+      return res.status(400).json({ error: 'OpenAI non configuré' });
+    }
+
+    // Build instruction-specific prompt
+    let systemPrompt = 'Tu es un assistant pédagogique spécialisé en fiscalité des sociétés israélienne.';
+    let userPrompt = '';
+
+    switch (instruction) {
+      case 'Optimiser':
+        systemPrompt += '\n\nAméliore le brouillon hébreu en utilisant uniquement les sources existantes. Ne change pas les sources.';
+        userPrompt = `Question: ${question.original_text}\nRéponse actuelle: ${existingAnswer.hebrew_answer}\nSources existantes: ${JSON.stringify(existingAnswer.sources_json)}\n\nAméliore la réponse.`;
+        break;
+      case 'Raccourcir à 15L':
+        systemPrompt += '\n\nRaccourcis la réponse hébreu à maximum 15 lignes en conservant la règle, l\'application et la conclusion. Utilise uniquement les sources existantes.';
+        userPrompt = `Question: ${question.original_text}\nRéponse actuelle: ${existingAnswer.hebrew_answer}\nSources existantes: ${JSON.stringify(existingAnswer.sources_json)}\n\nRaccourcis à 15 lignes maximum.`;
+        break;
+      case 'Rendre plus clair':
+        systemPrompt += '\n\nRéécris la réponse hébreu en hébreu académique plus clair. Utilise uniquement les sources existantes.';
+        userPrompt = `Question: ${question.original_text}\nRéponse actuelle: ${existingAnswer.hebrew_answer}\nSources existantes: ${JSON.stringify(existingAnswer.sources_json)}\n\nRends plus clair.`;
+        break;
+      case 'Expliquer simplement':
+        systemPrompt += '\n\nExplique en français pourquoi la réponse suit des sources. Utilise uniquement les sources existantes.';
+        userPrompt = `Question: ${question.original_text}\nRéponse actuelle: ${existingAnswer.hebrew_answer}\nExplication française: ${existingAnswer.french_explanation}\nSources existantes: ${JSON.stringify(existingAnswer.sources_json)}\n\nExplique simplement en français.`;
+        break;
+      case 'Vérifier la réponse':
+        systemPrompt += '\n\nVérifie que la réponse est supportée par les sources et identifie les points non supportés. Utilise uniquement les sources existantes.';
+        userPrompt = `Question: ${question.original_text}\nRéponse actuelle: ${existingAnswer.hebrew_answer}\nSources existantes: ${JSON.stringify(existingAnswer.sources_json)}\n\nVérifie la réponse.`;
+        break;
+      default:
+        systemPrompt += '\n\nAméliore la réponse selon l\'instruction.';
+        userPrompt = `Question: ${question.original_text}\nRéponse actuelle: ${existingAnswer.hebrew_answer}\nInstruction: ${instruction}\nSources existantes: ${JSON.stringify(existingAnswer.sources_json)}`;
+    }
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.7
+    });
+
+    const content = response.choices[0].message.content || '';
+    
+    // If instruction is French explanation, update french_explanation
+    if (instruction === 'Expliquer simplement') {
+      await saveAnswerToSession({
+        id: existingAnswer.id,
+        sessionId,
+        questionId,
+        hebrewAnswer: existingAnswer.hebrew_answer,
+        frenchExplanation: content,
+        reasoning: existingAnswer.reasoning,
+        sources: existingAnswer.sources_json,
+        lineCount: existingAnswer.line_count,
+        status: existingAnswer.status,
+        copied: existingAnswer.copied,
+        createdAt: existingAnswer.created_at,
+        updatedAt: new Date().toISOString()
+      });
+    } else {
+      // Otherwise update hebrew_answer
+      await saveAnswerToSession({
+        id: existingAnswer.id,
+        sessionId,
+        questionId,
+        hebrewAnswer: content,
+        frenchExplanation: existingAnswer.french_explanation,
+        reasoning: existingAnswer.reasoning,
+        sources: existingAnswer.sources_json,
+        lineCount: content.split('\n').length,
+        status: content.split('\n').length > 15 ? 'needs_review' : existingAnswer.status,
+        copied: existingAnswer.copied,
+        createdAt: existingAnswer.created_at,
+        updatedAt: new Date().toISOString()
+      });
+    }
+
+    res.json({
+      success: true,
+      instruction,
+      updatedAnswer: instruction === 'Expliquer simplement' ? existingAnswer.french_explanation : content
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de l\'optimisation de la réponse' });
+  }
+});
+
 // POST /api/sessions/:sessionId/final-verify - Final verification for all answers
 router.post('/:sessionId/final-verify', async (req: Request, res: Response) => {
   try {
@@ -415,6 +536,244 @@ router.post('/:sessionId/reset', async (req: Request, res: Response) => {
     res.json({ success: true, message: 'Session réinitialisée' });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de la réinitialisation' });
+  }
+});
+
+// POST /api/sessions/:sessionId/questions/validate - Save edited/validated questions
+router.post('/:sessionId/questions/validate', async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    const { questions } = req.body;
+    
+    const session = await getSession(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session non trouvée' });
+    }
+
+    if (!questions || !Array.isArray(questions)) {
+      return res.status(400).json({ error: 'Questions invalides' });
+    }
+
+    for (const q of questions) {
+      await saveQuestionToSession({
+        id: q.id || uuidv4(),
+        sessionId,
+        number: q.number || q.id,
+        originalText: q.originalHebrew || q.text || '',
+        originalHebrew: q.originalHebrew || q.text || '',
+        frenchTranslation: q.frenchTranslation || '',
+        frenchUnderstanding: q.frenchUnderstanding || '',
+        answerLimitLines: q.answerLimitLines || 15,
+        points: q.points || '',
+        pageStart: q.pageStart,
+        pageEnd: q.pageEnd,
+        language: 'hebrew',
+        status: q.status || 'pending',
+        createdAt: q.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    }
+
+    // Update session updated_at
+    await updateSessionTimestamp(sessionId);
+
+    const data = await getSessionData(sessionId);
+    
+    res.json({
+      success: true,
+      questions: data.questions,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de la validation des questions' });
+  }
+});
+
+// Helper function to update session timestamp
+async function updateSessionTimestamp(sessionId: string) {
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  if (isProduction) {
+    const pool = db as Pool;
+    await pool.query('UPDATE sessions SET updated_at = $1 WHERE id = $2', [new Date().toISOString(), sessionId]);
+  } else {
+    const sqlite = db as Database.Database;
+    sqlite.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(new Date().toISOString(), sessionId);
+  }
+}
+
+// POST /api/sessions/:sessionId/sync-exercise - Sync exercise data from local processing
+router.post('/:sessionId/sync-exercise', async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    const { extractedText, questions } = req.body;
+    
+    const session = await getSession(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session non trouvée' });
+    }
+
+    const doc = {
+      id: uuidv4(),
+      sessionId,
+      type: 'exercise',
+      filename: 'Exercice synchronisé',
+      mimetype: 'text/plain',
+      extractedText: extractedText || '',
+      characterCount: extractedText?.length || 0,
+      pageCount: 0,
+      chunksCount: 0,
+      status: 'completed',
+      createdAt: new Date().toISOString()
+    };
+
+    await saveDocumentToSession(doc);
+
+    if (questions && Array.isArray(questions)) {
+      for (const q of questions) {
+        await saveQuestionToSession({
+          id: q.id || uuidv4(),
+          sessionId,
+          number: q.number || q.id,
+          originalText: q.originalHebrew || q.text || '',
+          originalHebrew: q.originalHebrew || q.text || '',
+          frenchTranslation: q.frenchTranslation || '',
+          frenchUnderstanding: q.frenchUnderstanding || '',
+          answerLimitLines: q.answerLimitLines || 15,
+          points: q.points || '',
+          pageStart: q.pageStart,
+          pageEnd: q.pageEnd,
+          language: 'hebrew',
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      document: doc,
+      questionsSaved: questions?.length || 0
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de la synchronisation de l\'exercice' });
+  }
+});
+
+// POST /api/sessions/:sessionId/sync-laws - Sync laws data from local processing
+router.post('/:sessionId/sync-laws', async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    const { extractedText, chunks, pageCount } = req.body;
+    
+    const session = await getSession(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session non trouvée' });
+    }
+
+    const doc = {
+      id: uuidv4(),
+      sessionId,
+      type: 'laws',
+      filename: 'Lois synchronisées',
+      mimetype: 'text/plain',
+      extractedText: extractedText || '',
+      characterCount: extractedText?.length || 0,
+      pageCount: pageCount || 0,
+      chunksCount: chunks?.length || 0,
+      status: 'completed',
+      createdAt: new Date().toISOString()
+    };
+
+    await saveDocumentToSession(doc);
+
+    if (chunks && Array.isArray(chunks)) {
+      for (let i = 0; i < chunks.length; i++) {
+        await saveDocumentChunkToSession({
+          id: uuidv4(),
+          sessionId,
+          documentId: doc.id,
+          chunkIndex: i,
+          text: chunks[i].text || chunks[i],
+          pageNumber: chunks[i].pageNumber || null,
+          metadata: chunks[i].metadata || {},
+          createdAt: new Date().toISOString()
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      document: doc,
+      chunksSaved: chunks?.length || 0
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de la synchronisation des lois' });
+  }
+});
+
+// GET /api/sessions/:sessionId/final - Load final report
+router.get('/:sessionId/final', async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    const data = await getSessionData(sessionId);
+    
+    if (!data.session) {
+      return res.status(404).json({ error: 'Session non trouvée' });
+    }
+
+    res.json({
+      session: data.session,
+      documents: data.documents,
+      questions: data.questions,
+      answers: data.answers,
+      finalChecks: data.finalChecks,
+      finalReport: data.finalReport
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors du chargement du rapport final' });
+  }
+});
+
+// POST /api/sessions/:sessionId/final - Generate/save final report
+router.post('/:sessionId/final', async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    
+    const session = await getSession(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session non trouvée' });
+    }
+
+    const data = await getSessionData(sessionId);
+    
+    const finalReport = {
+      id: uuidv4(),
+      sessionId,
+      summary: {
+        totalQuestions: data.questions.length,
+        generatedAnswers: data.answers.length,
+        verifiedAnswers: data.finalChecks.length,
+        averageScore: data.finalChecks.length > 0 
+          ? data.finalChecks.reduce((sum: number, c: any) => sum + (c.score || 0), 0) / data.finalChecks.length 
+          : 0
+      },
+      finalText: `Rapport final pour la session ${sessionId}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    // Save final report to database
+    // (Implementation depends on database service having saveFinalReport function)
+
+    res.json({
+      success: true,
+      finalReport
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de la génération du rapport final' });
   }
 });
 
