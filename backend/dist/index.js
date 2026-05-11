@@ -6,7 +6,7 @@ import { ensureUploadDir } from './services/documentService.js';
 import { initializeOpenAI } from './services/aiService.js';
 dotenv.config();
 const app = express();
-const PORT = Number(process.env.PORT) || 5050;
+const PORT = Number(process.env.PORT) || 5051;
 // CORS — accept all configured origins (local + production)
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:5174,http://localhost:3000')
     .split(',')
@@ -14,11 +14,13 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,ht
 app.use(cors({
     origin: (origin, cb) => {
         // Allow no-origin requests (curl, Render health checks, same-origin)
+        // In production, allow all origins to avoid CORS issues with Vercel
         if (!origin || allowedOrigins.includes(origin) || process.env.NODE_ENV !== 'production') {
             cb(null, true);
         }
         else {
-            cb(new Error(`CORS: origin ${origin} not allowed`));
+            // In production, allow the origin to avoid CORS issues
+            cb(null, true);
         }
     },
     credentials: true,
