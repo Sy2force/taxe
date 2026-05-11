@@ -23,7 +23,7 @@ export default function Header() {
   useEffect(() => {
     const check = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5050';
+        const apiUrl = import.meta.env.VITE_API_URL;
         const res = await fetch(`${apiUrl}/health`);
         setBackendStatus(res.ok ? 'connected' : 'disconnected');
       } catch {
@@ -38,7 +38,8 @@ export default function Header() {
   const handleNewSession = async () => {
     setResetting(true);
     try {
-      await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5050'}/api/reset-session`, { method: 'POST' });
+      const apiUrl = import.meta.env.VITE_API_URL;
+      await fetch(`${apiUrl}/api/reset-session`, { method: 'POST' });
     } catch (e) { console.error('Reset failed', e); }
     localStorage.clear();
     setResetting(false);
