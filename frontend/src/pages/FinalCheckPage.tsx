@@ -115,6 +115,43 @@ export default function FinalCheckPage() {
               </div>
             </div>
 
+            {/* Metadata sections */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              {/* Exercise metadata */}
+              <div className="rounded-xl p-3" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.14)' }}>
+                <p className="text-[10px] font-semibold text-indigo-400 uppercase tracking-widest mb-2">Exercice</p>
+                {sessionData?.documents?.find((d: any) => d.type === 'exercise') ? (
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-text-secondary truncate">{sessionData.documents.find((d: any) => d.type === 'exercise').filename}</p>
+                    <p className="text-[10px] text-text-muted">{sessionData.documents.find((d: any) => d.type === 'exercise').character_count?.toLocaleString()} caractères</p>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-zinc-500">Non importé</p>
+                )}
+              </div>
+
+              {/* Laws metadata */}
+              <div className="rounded-xl p-3" style={{ background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.14)' }}>
+                <p className="text-[10px] font-semibold text-cyan-400 uppercase tracking-widest mb-2">Lois fiscales</p>
+                {sessionData?.documents?.find((d: any) => d.type === 'laws') ? (
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-text-secondary truncate">{sessionData.documents.find((d: any) => d.type === 'laws').filename}</p>
+                    <p className="text-[10px] text-text-muted">{sessionData.documents.find((d: any) => d.type === 'laws').page_count || '~243'} pages • {sessionData.documents.find((d: any) => d.type === 'laws').chunks_count || 0} chunks</p>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-zinc-500">Non importé</p>
+                )}
+              </div>
+            </div>
+
+            {/* Final recommendation */}
+            <div className="rounded-xl p-3 mb-4" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.14)' }}>
+              <p className="text-[10px] font-semibold text-emerald-400 uppercase tracking-widest mb-1">Recommandation finale</p>
+              <p className="text-[12px] text-text-secondary">
+                {avgScore >= 80 ? 'Prêt pour soumission' : avgScore >= 60 ? 'Besoin de révision mineure' : 'Besoin de révision importante'}
+              </p>
+            </div>
+
             {/* Copy buttons */}
             <div className="flex flex-wrap gap-2">
               <button onClick={copyHebrewAnswers}

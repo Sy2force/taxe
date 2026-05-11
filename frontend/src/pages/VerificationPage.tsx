@@ -37,6 +37,7 @@ export default function VerificationPage() {
 
   const questions = sessionData?.questions || [];
   const answers = sessionData?.answers || [];
+  const finalChecks = sessionData?.finalChecks || [];
   
   const answersMap = new Map(answers.map((a: AnswerData) => [a.question_id, a]));
   
@@ -124,53 +125,87 @@ export default function VerificationPage() {
           </div>
 
           {/* Question rows */}
-          <div className="space-y-2 mb-6">
+          <div className="space-y-3 mb-6">
             {questions.map((q) => {
               const a = answersMap.get(q.id);
               const finalStatus = getFinalStatus(a);
               const cfg = statusConfig[finalStatus];
               const StatusIcon = cfg.icon;
               const lines = a?.hebrew_answer ? a.hebrew_answer.split('\n').filter(l => l.trim()).length : 0;
-              const hasAnswer = !!a?.hebrew_answer && a.hebrew_answer.length > 10;
-              const hasSource = (a?.sources_json?.length || 0) > 0;
               const within15 = lines <= 15 && lines > 0;
+              const check = finalChecks.find((c: any) => c.question_id === q.id);
+              const score = check?.score || 0;
 
               return (
-                <div key={q.id} className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+                <div key={q.id} className="rounded-2xl p-4"
                   style={{ background: 'rgba(24,24,27,0.7)', border: '1px solid rgba(255,255,255,0.06)' }}>
 
-                  {/* Q number */}
-                  <span className="w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold flex-shrink-0 tabular-nums"
-                    style={{ background: 'rgba(99,102,241,0.14)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.22)' }}>
-                    {q.id}
-                  </span>
-
-                  {/* Question text */}
-                  <span className="flex-1 text-[12px] text-text-tertiary truncate">{q.original_text.substring(0, 55)}{q.original_text.length > 55 ? '…' : ''}</span>
-
-                  {/* Checks — hidden on mobile, visible sm+ */}
-                  <div className="hidden sm:flex items-center gap-3 flex-shrink-0">
-                    {[
-                      { val: hasSource, label: 'src' },
-                      { val: hasAnswer, label: 'rép' },
-                      { val: within15,  label: '≤15' },
-                      { val: !!a?.copied, label: 'cpy' },
-                    ].map(({ val, label }) => (
-                      <div key={label} className="flex flex-col items-center gap-0.5">
-                        {val
-                          ? <CheckCircle className="w-3.5 h-3.5 text-emerald-400" />
-                          : <XCircle className="w-3.5 h-3.5 text-zinc-700" />}
-                        <span className="text-[9px] text-text-muted uppercase tracking-wider">{label}</span>
-                      </div>
-                    ))}
+                  {/* Header */}
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="w-7 h-7 rounded-lg flex items-center justify-center text-[12px] font-bold flex-shrink-0 tabular-nums"
+                      style={{ background: 'rgba(99,102,241,0.14)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.22)' }}>
+                      {q.id}
+                    </span>
+                    <span className="flex-1 text-[12px] text-text-secondary truncate">{q.original_text.substring(0, 60)}{q.original_text.length > 60 ? '…' : ''}</span>
+                    {check ? (
+                      <span className="text-[18px] font-bold tabular-nums px-2 py-1 rounded-lg"
+                        style={{ background: score >= 80 ? 'rgba(16,185,129,0.1)' : score >= 60 ? 'rgba(245,158,11,0.1)' : 'rgba(249,115,22,0.1)', 
+                                 border: score >= 80 ? '1px solid rgba(16,185,129,0.2)' : score >= 60 ? '1px solid rgba(245,158,11,0.2)' : '1px solid rgba(249,115,22,0.2)',
+                                 color: score >= 80 ? '#34d399' : score >= 60 ? '#fbbf24' : '#fb923c' }}>
+                        {Math.round(score)}/100
+                      </span>
+                    ) : (
+                      <span className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-lg flex-shrink-0 ${cfg.color}`}
+                        style={{ background: 'rgba(255,255,255,0.04)' }}>
+                        <StatusIcon className="w-3 h-3" />
+                        {cfg.label}
+                      </span>
+                    )}
                   </div>
 
-                  {/* Status badge */}
-                  <span className={`flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold px-1.5 sm:px-2 py-1 rounded-lg flex-shrink-0 ${cfg.color}`}
-                    style={{ background: 'rgba(255,255,255,0.04)' }}>
-                    <StatusIcon className="w-3 h-3" />
-                    <span className="hidden sm:inline">{cfg.label}</span>
-                  </span>
+                  {/* Score breakdown if verified */}
+                  {check && (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                      {[
+                        { label: 'Compréhension', score: 15, achieved: score >= 15 },
+                        { label: 'Règle fiscale', score: 20, achieved: score >= 35 },
+                        { label: 'Source pertinente', score: 20, achieved: score >= 55 },
+                        { label: 'Application', score: 20, achieved: score >= 75 },
+                        { label: 'Calcul', score: 10, achieved: score >= 85 },
+                        { label: 'Conclusion', score: 10, achieved: score >= 95 },
+                        { label: '≤15 lignes', score: 5, achieved: within15 },
+                      ].map((item, idx) => (
+                        <div key={idx} className="rounded-lg p-2 text-center"
+                          style={{ background: item.achieved ? 'rgba(16,185,129,0.08)' : 'rgba(39,39,42,0.8)', 
+                                   border: item.achieved ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(255,255,255,0.05)' }}>
+                          <p className="text-[9px] text-text-muted uppercase tracking-wider">{item.label}</p>
+                          <p className="text-[13px] font-bold tabular-nums" style={{ color: item.achieved ? '#34d399' : '#71717a' }}>
+                            {item.score}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Issues */}
+                  {check?.issues_json && check.issues_json.length > 0 && (
+                    <div className="rounded-lg p-2 mb-2" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.12)' }}>
+                      <p className="text-[10px] font-semibold text-amber-400/80 uppercase tracking-widest mb-1">Problèmes</p>
+                      {check.issues_json.slice(0, 2).map((issue: string, ii: number) => (
+                        <p key={ii} className="text-[11px] text-amber-400/90">• {issue}</p>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Corrections */}
+                  {check?.corrections_json && check.corrections_json.length > 0 && (
+                    <div className="rounded-lg p-2" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.14)' }}>
+                      <p className="text-[10px] font-semibold text-indigo-400/80 uppercase tracking-widest mb-1">Suggestions</p>
+                      {check.corrections_json.slice(0, 2).map((correction: string, ii: number) => (
+                        <p key={ii} className="text-[11px] text-indigo-400/90">• {correction}</p>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}
