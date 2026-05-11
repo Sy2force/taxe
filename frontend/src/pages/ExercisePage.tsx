@@ -7,7 +7,13 @@ const API = import.meta.env.VITE_API_URL || 'http://localhost:5050';
 
 interface DetectedQuestion {
   id: number;
-  text: string;
+  originalHebrew: string;
+  frenchTranslation: string;
+  frenchUnderstanding: string;
+  points: string;
+  answerLimitLines: number;
+  bullets: string[];
+  status: "detected" | "validated" | "needs_review";
 }
 
 // ─── Détection robuste FR + HE ──────────────────────────────────────────────
@@ -15,83 +21,71 @@ interface DetectedQuestion {
 // Marqueurs de début de question/exercice (début de ligne)
 const QUESTION_START_RE = new RegExp(
   [
-    // Hébreu : שאלה 1, שאלה 2, etc. (specific pattern)
+    // Hébreu : שאלה 1, שאלה 2, etc. (specific pattern - highest priority)
     String.raw`^(שאלה)\s+\d+`,
     // Hébreu : תרגיל / סעיף / חלק + numéro
     String.raw`^(תרגיל|סעיף|חלק)\s*\d+`,
-    // Hébreu : שאלה + lettre hébraïque
-    String.raw`^(שאלה)\s+[\u05D0-\u05EA]`,
-    // Hébreu : שאלה + chiffre hébreu (א', ב', ג')
-    String.raw`^(שאלה)\s+[\u05D0-\u05D9]'`,
-    // Hébreu lettre seule : א. ב. ג. / א) ב) ג)
-    String.raw`^[\u05D0-\u05D9][.)]\s+\S`,
-    // Hébreu : numéro hébreu avec apostrophe : א' ב' ג'
-    String.raw`^[\u05D0-\u05D9]'\s+\S`,
-    // Français : Question / Exercice / Cas / Q + numéro
-    String.raw`^(question|exercice|cas|partie)\s*(n[o°]?\s*)?\d+`,
-    String.raw`^Q\d+\s*[.):–-]`,
-    // Numérotation universelle : 1. 2. 1) 2) 1- 2- (avec espace ou contenu après)
-    String.raw`^\d{1,2}[.)]\s+\S`,
-    String.raw`^\d{1,2}[-–]\s+\S`,
+    // Hébreu lettre seule : א. ב. ג. / א) ב) ג) / א' ב' ג'
+    String.raw`^[\u05D0-\u05D9][.)']\s*\S`,
+    // Français : Question / Exercice / Cas / Partie
+    String.raw`^(question|exercice|cas|partie)\s*\d*`,
+    // Numérotation : 1. 2. 1) 2) 1- 2-
+    String.raw`^\d{1,2}[.)-]\s*\S`,
   ].join('|'),
   'i'
 );
 
-// Mots-clés interrogatifs hébreux : si un paragraphe en contient, c'est probablement une question
-const HE_QUESTION_KEYWORDS = [
-  'האם','מה','כיצד','מדוע','הסבר','חשב','קבע','נדרש','דון','פרט','ציין','נמק',
-  'חווה דעתך','מס הכנסה','חברה','בעל מניות','דיבידנד','הכנסה',
-];
+// ─── Extraction robuste des questions ──────────────────────────────────────────────
+function extractQuestionsFromText(fullText: string): DetectedQuestion[] {
+  const lines = fullText.split('\n');
+  const questions: DetectedQuestion[] = [];
+  let currentQuestion: DetectedQuestion | null = null;
 
-function extractQuestionsFromText(text: string): DetectedQuestion[] {
-  // Stop before academic guidelines section
-  const stopPattern = /קווים מנחים להגשת עבודה אקדמית/i;
-  const stopIndex = text.search(stopPattern);
-  const workingText = stopIndex !== -1 ? text.substring(0, stopIndex) : text;
+  // Stop marker: academic guidelines
+  const ACADEMIC_GUIDELINES_MARKER = 'קווים מנחים להגשת עבודה אקדמית';
+  const academicIndex = lines.findIndex(l => l.includes(ACADEMIC_GUIDELINES_MARKER));
+  const relevantLines = academicIndex > 0 ? lines.slice(0, academicIndex) : lines;
 
-  const lines = workingText.split(/\r?\n/);
-  const found: DetectedQuestion[] = [];
-  let current = '';
-  let id = 1;
+  for (const line of relevantLines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
 
-  for (const line of lines) {
-    const t = line.trim();
-    if (!t) {
-      if (current) current += '\n';
-      continue;
-    }
-    if (QUESTION_START_RE.test(t)) {
-      if (current.trim()) {
-        found.push({ id: id++, text: current.trim() });
+    // Check if this line starts a new question
+    const match = trimmed.match(QUESTION_START_RE);
+    if (match) {
+      // Save previous question if exists
+      if (currentQuestion && currentQuestion.originalHebrew.length > 10) {
+        questions.push(currentQuestion);
       }
-      current = t;
-    } else if (current) {
-      current += '\n' + t;
-    }
-  }
-  if (current.trim()) found.push({ id: id, text: current.trim() });
 
-  // ── Fallback 1 : paragraphes contenant des mots-clés hébreux interrogatifs ──
-  if (found.length === 0) {
-    const paragraphs = text.split(/\n{2,}/).map(p => p.trim()).filter(p => p.length > 40);
-    let pid = 1;
-    for (const para of paragraphs) {
-      const hasKeyword = HE_QUESTION_KEYWORDS.some(k => para.includes(k));
-      const hasQuestion = para.includes('?') || para.includes('״');
-      const hasNumber = /^\d+[.)–-]/.test(para);
-      if (hasKeyword || hasQuestion || hasNumber) {
-        found.push({ id: pid++, text: para });
+      // Start new question
+      currentQuestion = {
+        id: questions.length + 1,
+        originalHebrew: trimmed,
+        frenchTranslation: '',
+        frenchUnderstanding: '',
+        points: '',
+        answerLimitLines: 15,
+        bullets: [],
+        status: 'detected'
+      };
+    } else if (currentQuestion) {
+      // Append to current question
+      currentQuestion.originalHebrew += '\n' + trimmed;
+
+      // Detect bullet points
+      if (/^[•\-\*]\s/.test(trimmed)) {
+        currentQuestion.bullets.push(trimmed);
       }
     }
   }
 
-  // ── Fallback 2 : diviser en paragraphes de taille raisonnable ──
-  if (found.length === 0) {
-    const paragraphs = text.split(/\n{2,}/).map(p => p.trim()).filter(p => p.length > 60);
-    paragraphs.slice(0, 20).forEach((p, i) => found.push({ id: i + 1, text: p }));
+  // Save last question
+  if (currentQuestion && currentQuestion.originalHebrew.length > 10) {
+    questions.push(currentQuestion);
   }
 
-  return found;
+  return questions;
 }
 
 export default function ExercisePage() {
@@ -107,7 +101,22 @@ export default function ExercisePage() {
   const [questions, setQuestions] = useState<DetectedQuestion[]>(() => {
     try {
       const saved = localStorage.getItem('exercise_questions');
-      return saved ? JSON.parse(saved) : [];
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      // Handle old format with 'text' field
+      if (parsed.length > 0 && 'text' in parsed[0]) {
+        return parsed.map((q: any, i: number) => ({
+          id: q.id || i + 1,
+          originalHebrew: q.text || '',
+          frenchTranslation: '',
+          frenchUnderstanding: '',
+          points: '',
+          answerLimitLines: 15,
+          bullets: q.bullets || [],
+          status: 'detected' as const
+        }));
+      }
+      return parsed;
     } catch { return []; }
   });
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -124,7 +133,13 @@ export default function ExercisePage() {
     if (sessionData && sessionData.questions.length > 0) {
       const sessionQuestions = sessionData.questions.map((q: any, index: number) => ({
         id: index + 1,
-        text: q.original_text
+        originalHebrew: q.original_text || q.originalHebrew || '',
+        frenchTranslation: q.frenchTranslation || '',
+        frenchUnderstanding: q.frenchUnderstanding || '',
+        points: q.points || '',
+        answerLimitLines: q.answerLimitLines || 15,
+        bullets: q.bullets || [],
+        status: (q.status || 'detected') as "detected" | "validated" | "needs_review"
       }));
       setQuestions(sessionQuestions);
     }
@@ -218,14 +233,23 @@ export default function ExercisePage() {
   const handleManualSplit = () => {
     const blocks = manualText.split(/\n\s*---\s*\n/).map(b => b.trim()).filter(b => b.length > 0);
     if (blocks.length === 0) return;
-    const qs: DetectedQuestion[] = blocks.map((b, i) => ({ id: i + 1, text: b }));
+    const qs: DetectedQuestion[] = blocks.map((b, i) => ({
+      id: i + 1,
+      originalHebrew: b,
+      frenchTranslation: '',
+      frenchUnderstanding: '',
+      points: '',
+      answerLimitLines: 15,
+      bullets: [],
+      status: 'detected' as const
+    }));
     saveAndSet(qs);
     setShowManualMode(false);
     setStatus('success');
   };
 
-  const updateQuestion = (id: number, text: string) => {
-    const updated = questions.map(q => q.id === id ? { ...q, text } : q);
+  const updateQuestion = (id: number, originalHebrew: string) => {
+    const updated = questions.map(q => q.id === id ? { ...q, originalHebrew } : q);
     saveAndSet(updated);
   };
 
@@ -235,13 +259,31 @@ export default function ExercisePage() {
   };
 
   const addQuestion = () => {
-    const qs = [...questions, { id: questions.length + 1, text: '' }];
+    const qs = [...questions, {
+      id: questions.length + 1,
+      originalHebrew: '',
+      frenchTranslation: '',
+      frenchUnderstanding: '',
+      points: '',
+      answerLimitLines: 15,
+      bullets: [],
+      status: 'detected' as const
+    }];
     saveAndSet(qs);
   };
 
   const splitBySeparator = (separator: string) => {
     const parts = manualText.split(separator).map(p => p.trim()).filter(p => p.length > 10);
-    const detected = parts.map((text, i) => ({ id: i + 1, text }));
+    const detected = parts.map((originalHebrew, i) => ({
+      id: i + 1,
+      originalHebrew,
+      frenchTranslation: '',
+      frenchUnderstanding: '',
+      points: '',
+      answerLimitLines: 15,
+      bullets: [],
+      status: 'detected' as const
+    }));
     saveAndSet(detected);
     setShowManualMode(false);
   };
@@ -536,26 +578,82 @@ export default function ExercisePage() {
             </div>
           )}
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             {questions.map((q) => (
-              <div key={q.id} className="group flex items-start gap-3 p-4 rounded-2xl transition-all"
+              <div key={q.id} className="group rounded-2xl transition-all"
                 style={{ background: 'rgba(24,24,27,0.7)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                <span className="mt-0.5 w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold flex-shrink-0 tabular-nums"
-                  style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.2)' }}>
-                  {q.id}
-                </span>
-                <textarea
-                  value={q.text}
-                  onChange={e => updateQuestion(q.id, e.target.value)}
-                  rows={Math.min(6, Math.max(2, q.text.split('\n').length + 1))}
-                  dir={isHebrew(q.text) ? 'rtl' : 'ltr'}
-                  className={`flex-1 bg-transparent text-[13px] text-text-primary focus:outline-none resize-none leading-relaxed placeholder:text-zinc-700 ${isHebrew(q.text) ? 'text-right' : ''}`}
-                  placeholder="Texte de la question…"
-                />
-                <button onClick={() => deleteQuestion(q.id)}
-                  className="p-1 text-zinc-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                {/* Header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                  <div className="flex items-center gap-3">
+                    <span className="w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold flex-shrink-0 tabular-nums"
+                      style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.2)' }}>
+                      {q.id}
+                    </span>
+                    <span className="text-[11px] px-2 py-0.5 rounded" style={{
+                      background: q.status === 'validated' ? 'rgba(16,185,129,0.1)' : 'rgba(245,158,11,0.1)',
+                      color: q.status === 'validated' ? '#34d399' : '#fbbf24',
+                      border: q.status === 'validated' ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(245,158,11,0.2)'
+                    }}>
+                      {q.status === 'validated' ? 'Validée' : 'À vérifier'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => deleteQuestion(q.id)}
+                      className="p-1 text-zinc-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Hebrew original */}
+                <div className="px-4 py-3">
+                  <div className="text-[11px] font-medium text-text-tertiary mb-2">Texte original en hébreu:</div>
+                  <textarea
+                    value={q.originalHebrew}
+                    onChange={e => updateQuestion(q.id, e.target.value)}
+                    rows={Math.min(6, Math.max(2, q.originalHebrew.split('\n').length + 1))}
+                    dir="rtl"
+                    className="w-full bg-zinc-950/60 text-[13px] text-text-primary p-3 rounded-lg focus:outline-none resize-none leading-relaxed placeholder:text-zinc-700 text-right"
+                    placeholder="שאלה בעברית..."
+                  />
+                </div>
+
+                {/* French translation */}
+                <div className="px-4 py-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                  <div className="text-[11px] font-medium text-text-tertiary mb-2">Version française:</div>
+                  <textarea
+                    value={q.frenchTranslation}
+                    onChange={e => {
+                      const updated = questions.map(qq => qq.id === q.id ? { ...qq, frenchTranslation: e.target.value } : qq);
+                      saveAndSet(updated);
+                    }}
+                    rows={3}
+                    dir="ltr"
+                    className="w-full bg-zinc-950/60 text-[13px] text-text-primary p-3 rounded-lg focus:outline-none resize-none leading-relaxed placeholder:text-zinc-700"
+                    placeholder="Traduction / compréhension en français..."
+                  />
+                </div>
+
+                {/* Footer with buttons */}
+                <div className="px-4 py-3 border-t flex items-center justify-between" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                  <div className="text-[10px] text-text-tertiary">
+                    Limite: {q.answerLimitLines} lignes
+                  </div>
+                  <div className="flex gap-2">
+                    {q.status !== 'validated' && (
+                      <button
+                        onClick={() => {
+                          const updated = questions.map(qq => qq.id === q.id ? { ...qq, status: 'validated' as const } : qq);
+                          saveAndSet(updated);
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                        style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)', color: '#34d399' }}
+                      >
+                        Valider
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
             ))}
           </div>
