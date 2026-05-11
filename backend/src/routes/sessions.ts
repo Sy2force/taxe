@@ -27,7 +27,7 @@ const uploadDir = process.env.NODE_ENV === 'production' ? '/tmp/uploads' : path.
 const upload = multer({
   dest: uploadDir,
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB limit
+    fileSize: 100 * 1024 * 1024, // 100MB limit for large PDFs
   },
 });
 

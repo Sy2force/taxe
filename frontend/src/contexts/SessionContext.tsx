@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 
-const API_BASE_URL = "https://taxe-id6h.onrender.com";
+const API_BASE_URL = "http://localhost:5050";
 const API = `${API_BASE_URL}/api`;
-const PUBLIC_APP_URL = "https://taxe-lake.vercel.app";
+const PUBLIC_APP_URL = "http://localhost:5173";
 
 export interface SessionData {
   session: any;
@@ -87,13 +87,9 @@ export function SessionProvider({ children }: SessionProviderProps) {
       setMode(modeFromUrl === 'view' ? 'view' : 'edit');
       loadSession(sessionFromUrl);
     } else {
-      const storedSessionId = localStorage.getItem('current_session_id');
-      if (storedSessionId) {
-        setSessionId(storedSessionId);
-        loadSession(storedSessionId);
-      } else {
-        createSession();
-      }
+      // Force new session creation when using production backend
+      localStorage.removeItem('current_session_id');
+      createSession();
     }
 
     return () => {
