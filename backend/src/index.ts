@@ -14,6 +14,7 @@ const PORT = Number(process.env.PORT) || 5051;
 const allowedOrigins = [
   'https://taxe-lake.vercel.app',
   'https://taxe-self.vercel.app',
+  'https://taxe-one.vercel.app',
   'http://localhost:5173',
   'http://localhost:5174'
 ].concat(
@@ -26,9 +27,10 @@ app.use(cors({
     if (!origin) return callback(null, true);
     
     if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+      console.log(`✅ CORS allowed: ${origin}`);
       callback(null, true);
     } else {
-      console.warn(`CORS blocked origin: ${origin}`);
+      console.warn(`❌ CORS blocked origin: ${origin}`);
       callback(new Error('Origin not allowed by CORS'));
     }
   },

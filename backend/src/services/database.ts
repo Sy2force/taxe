@@ -22,13 +22,34 @@ let sqliteDb: Database.Database | null = null;
 let pgPool: Pool | null = null;
 
 export async function getDatabase() {
-  // Always use SQLite for local development
-  await ensureDbDir();
-  if (!sqliteDb) {
-    sqliteDb = new Database(DB_PATH);
-    initSQLite(sqliteDb);
+  const isProduction = process.env.NODE_ENV === 'production';
+  const databaseUrl = process.env.DATABASE_URL;
+  
+  console.log(`[getDatabase] isProduction: ${isProduction}, databaseUrl: ${databaseUrl ? 'SET' : 'NOT_SET'}`);
+  
+  if (isProduction && databaseUrl) {
+    // Use PostgreSQL in production if DATABASE_URL is available
+    if (!pgPool) {
+      console.log('[getDatabase] Initializing PostgreSQL Pool...');
+      pgPool = new Pool({ 
+        connectionString: databaseUrl,
+        ssl: { rejectUnauthorized: false }
+      });
+      await initPostgreSQL(pgPool);
+      console.log('✅ PostgreSQL Pool initialized');
+    }
+    return pgPool;
+  } else {
+    // Use SQLite in development or if DATABASE_URL is not available
+    await ensureDbDir();
+    if (!sqliteDb) {
+      console.log('[getDatabase] Initializing SQLite database...');
+      sqliteDb = new Database(DB_PATH);
+      initSQLite(sqliteDb);
+      console.log('✅ SQLite database initialized');
+    }
+    return sqliteDb;
   }
-  return sqliteDb;
 }
 
 function initSQLite(db: Database.Database) {
@@ -322,14 +343,35 @@ async function initPostgreSQL(pool: Pool) {
   `);
 }
 
+// Helper function to check if we're using PostgreSQL
+function isPostgreSQL(db: any): db is Pool {
+  return db && typeof db.connect === 'function';
+}
+
 // Document operations
 export async function saveDocumentToDb(doc: any) {
-  const db = await getDatabase() as Database.Database;
-  const stmt = db.prepare(`
-    INSERT OR REPLACE INTO documents (id, name, type, pages, content, uploaded_at, is_exercise, is_laws)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  stmt.run(doc.id, doc.name, doc.type, doc.pages || null, doc.content, doc.uploadedAt, doc.isExercise ? 1 : 0, doc.isLaws ? 1 : 0);
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  if (isProduction && isPostgreSQL(db)) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      await client.query(
+        'INSERT INTO documents (id, name, type, pages, content, uploaded_at, is_exercise, is_laws) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (id) DO UPDATE SET name=$2, type=$3, pages=$4, content=$5, uploaded_at=$6, is_exercise=$7, is_laws=$8',
+        [doc.id, doc.name, doc.type, doc.pages || null, doc.content, doc.uploadedAt, doc.isExercise ? 1 : 0, doc.isLaws ? 1 : 0]
+      );
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const stmt = sqlite.prepare(`
+      INSERT OR REPLACE INTO documents (id, name, type, pages, content, uploaded_at, is_exercise, is_laws)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(doc.id, doc.name, doc.type, doc.pages || null, doc.content, doc.uploadedAt, doc.isExercise ? 1 : 0, doc.isLaws ? 1 : 0);
+  }
 }
 
 export async function getAllDocumentsFromDb() {
@@ -445,90 +487,229 @@ export async function clearVerificationResults() {
 
 // Session functions
 export async function createSession(title: string = 'Session sans titre') {
-  const db = await getDatabase() as Database.Database;
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
   const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const now = new Date().toISOString();
-  const stmt = db.prepare('INSERT INTO sessions (id, title, created_at, updated_at, status) VALUES (?, ?, ?, ?, ?)');
-  stmt.run(sessionId, title, now, now, 'active');
+  
+  if (isProduction && isPostgreSQL(db)) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      await client.query(
+        'INSERT INTO sessions (id, title, created_at, updated_at, status) VALUES ($1, $2, $3, $4, $5)',
+        [sessionId, title, now, now, 'active']
+      );
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const stmt = sqlite.prepare('INSERT INTO sessions (id, title, created_at, updated_at, status) VALUES (?, ?, ?, ?, ?)');
+    stmt.run(sessionId, title, now, now, 'active');
+  }
   return sessionId;
 }
 
 export async function getSession(sessionId: string) {
-  const db = await getDatabase() as Database.Database;
-  const stmt = db.prepare('SELECT * FROM sessions WHERE id = ?');
-  const row = stmt.get(sessionId) as any;
-  return row || null;
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  if (isProduction && isPostgreSQL(db)) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      const result = await client.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+      return result.rows[0] || null;
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const stmt = sqlite.prepare('SELECT * FROM sessions WHERE id = ?');
+    const row = stmt.get(sessionId) as any;
+    return row || null;
+  }
 }
 
 export async function saveDocumentToSession(doc: any) {
-  const db = await getDatabase() as Database.Database;
-  const stmt = db.prepare(`
-    INSERT INTO documents (id, session_id, type, filename, mimetype, extracted_text, character_count, page_count, chunks_count, status, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  stmt.run(doc.id, doc.sessionId, doc.type, doc.filename, doc.mimetype, doc.extractedText, doc.characterCount, doc.pageCount, doc.chunksCount, doc.status, doc.createdAt);
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  if (isProduction && isPostgreSQL(db)) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      await client.query(
+        'INSERT INTO documents (id, session_id, type, filename, mimetype, extracted_text, character_count, page_count, chunks_count, status, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)',
+        [doc.id, doc.sessionId, doc.type, doc.filename, doc.mimetype, doc.extractedText, doc.characterCount, doc.pageCount, doc.chunksCount, doc.status, doc.createdAt]
+      );
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const stmt = sqlite.prepare(`
+      INSERT INTO documents (id, session_id, type, filename, mimetype, extracted_text, character_count, page_count, chunks_count, status, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(doc.id, doc.sessionId, doc.type, doc.filename, doc.mimetype, doc.extractedText, doc.characterCount, doc.pageCount, doc.chunksCount, doc.status, doc.createdAt);
+  }
 }
 
 export async function saveQuestionToSession(question: any) {
-  const db = await getDatabase() as Database.Database;
-  const stmt = db.prepare(`
-    INSERT INTO questions (id, session_id, number, original_text, language, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  stmt.run(question.id, question.sessionId, question.number, question.originalText, question.language, question.status, question.createdAt, question.updatedAt);
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  if (isProduction && isPostgreSQL(db)) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      await client.query(
+        'INSERT INTO questions (id, session_id, number, original_text, cleaned_hebrew, french_understanding, language, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+        [question.id, question.sessionId, question.number, question.originalText, question.cleanedHebrew || '', question.frenchUnderstanding || '', question.language, question.status, question.createdAt, question.updatedAt]
+      );
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const stmt = sqlite.prepare(`
+      INSERT INTO questions (id, session_id, number, original_text, cleaned_hebrew, french_understanding, language, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(question.id, question.sessionId, question.number, question.originalText, question.cleanedHebrew || '', question.frenchUnderstanding || '', question.language, question.status, question.createdAt, question.updatedAt);
+  }
 }
 
 export async function saveAnswerToSession(answer: any) {
-  const db = await getDatabase() as Database.Database;
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
   const now = new Date().toISOString();
-  const stmt = db.prepare(`
-    INSERT INTO answers (id, session_id, question_id, hebrew_answer, french_explanation, reasoning, sources_json, line_count, status, copied, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT (id) DO UPDATE SET hebrew_answer=?, french_explanation=?, reasoning=?, sources_json=?, line_count=?, status=?, copied=?, updated_at=?
-  `);
-  stmt.run(answer.id, answer.sessionId, answer.questionId, answer.hebrewAnswer, answer.frenchExplanation, answer.reasoning, JSON.stringify(answer.sources), answer.lineCount, answer.status, answer.copied, answer.createdAt, now,
-           answer.hebrewAnswer, answer.frenchExplanation, answer.reasoning, JSON.stringify(answer.sources), answer.lineCount, answer.status, answer.copied, now);
+  
+  if (isProduction && isPostgreSQL(db)) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      await client.query(
+        'INSERT INTO answers (id, session_id, question_id, hebrew_answer, french_explanation, reasoning, sources_json, line_count, status, copied, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ON CONFLICT (id) DO UPDATE SET hebrew_answer=$4, french_explanation=$5, reasoning=$6, sources_json=$7, line_count=$8, status=$9, copied=$10, updated_at=$12',
+        [answer.id, answer.sessionId, answer.questionId, answer.hebrewAnswer, answer.frenchExplanation, answer.reasoning, JSON.stringify(answer.sources), answer.lineCount, answer.status, answer.copied, answer.createdAt, now]
+      );
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const stmt = sqlite.prepare(`
+      INSERT INTO answers (id, session_id, question_id, hebrew_answer, french_explanation, reasoning, sources_json, line_count, status, copied, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (id) DO UPDATE SET hebrew_answer=?, french_explanation=?, reasoning=?, sources_json=?, line_count=?, status=?, copied=?, updated_at=?
+    `);
+    stmt.run(answer.id, answer.sessionId, answer.questionId, answer.hebrewAnswer, answer.frenchExplanation, answer.reasoning, JSON.stringify(answer.sources), answer.lineCount, answer.status, answer.copied, answer.createdAt, now,
+             answer.hebrewAnswer, answer.frenchExplanation, answer.reasoning, JSON.stringify(answer.sources), answer.lineCount, answer.status, answer.copied, now);
+  }
 }
 
 export async function saveFinalCheckToSession(check: any) {
-  const db = await getDatabase() as Database.Database;
-  const stmt = db.prepare(`
-    INSERT INTO final_checks (id, session_id, question_id, score, status, issues_json, corrections_json, sources_json, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT (id) DO UPDATE SET score=?, status=?, issues_json=?, corrections_json=?, sources_json=?
-  `);
-  stmt.run(check.id, check.sessionId, check.questionId, check.score, check.status, JSON.stringify(check.issues), JSON.stringify(check.corrections), JSON.stringify(check.sources), check.createdAt,
-           check.score, check.status, JSON.stringify(check.issues), JSON.stringify(check.corrections), JSON.stringify(check.sources));
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  if (isProduction && isPostgreSQL(db)) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      await client.query(
+        'INSERT INTO final_checks (id, session_id, question_id, score, status, issues_json, corrections_json, sources_json, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (id) DO UPDATE SET score=$4, status=$5, issues_json=$6, corrections_json=$7, sources_json=$8',
+        [check.id, check.sessionId, check.questionId, check.score, check.status, JSON.stringify(check.issues), JSON.stringify(check.corrections), JSON.stringify(check.sources), check.createdAt]
+      );
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const stmt = sqlite.prepare(`
+      INSERT INTO final_checks (id, session_id, question_id, score, status, issues_json, corrections_json, sources_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (id) DO UPDATE SET score=?, status=?, issues_json=?, corrections_json=?, sources_json=?
+    `);
+    stmt.run(check.id, check.sessionId, check.questionId, check.score, check.status, JSON.stringify(check.issues), JSON.stringify(check.corrections), JSON.stringify(check.sources), check.createdAt,
+             check.score, check.status, JSON.stringify(check.issues), JSON.stringify(check.corrections), JSON.stringify(check.sources));
+  }
 }
 
 export async function saveDocumentChunkToSession(chunk: any) {
-  const db = await getDatabase() as Database.Database;
-  const stmt = db.prepare(`
-    INSERT INTO document_chunks (id, session_id, document_id, chunk_index, text, page_number, metadata_json, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  stmt.run(chunk.id, chunk.sessionId, chunk.documentId, chunk.chunkIndex, chunk.text, chunk.pageNumber, JSON.stringify(chunk.metadata), chunk.createdAt);
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  if (isProduction && isPostgreSQL(db)) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      await client.query(
+        'INSERT INTO document_chunks (id, session_id, document_id, chunk_index, text, page_number, metadata_json, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+        [chunk.id, chunk.sessionId, chunk.documentId, chunk.chunkIndex, chunk.text, chunk.pageNumber, JSON.stringify(chunk.metadata), chunk.createdAt]
+      );
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const stmt = sqlite.prepare(`
+      INSERT INTO document_chunks (id, session_id, document_id, chunk_index, text, page_number, metadata_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(chunk.id, chunk.sessionId, chunk.documentId, chunk.chunkIndex, chunk.text, chunk.pageNumber, JSON.stringify(chunk.metadata), chunk.createdAt);
+  }
 }
 
 export async function getSessionData(sessionId: string) {
-  const db = await getDatabase() as Database.Database;
-  const session = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId) as any;
-  const documents = db.prepare('SELECT * FROM documents WHERE session_id = ?').all(sessionId) as any[];
-  const questions = db.prepare('SELECT * FROM questions WHERE session_id = ? ORDER BY number').all(sessionId) as any[];
-  const answers = db.prepare('SELECT * FROM answers WHERE session_id = ?').all(sessionId) as any[];
-  const finalChecks = db.prepare('SELECT * FROM final_checks WHERE session_id = ?').all(sessionId) as any[];
-  const chunks = db.prepare('SELECT * FROM document_chunks WHERE session_id = ? ORDER BY chunk_index').all(sessionId) as any[];
-  const finalReport = db.prepare('SELECT * FROM final_reports WHERE session_id = ?').get(sessionId) as any;
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  if (isProduction && isPostgreSQL(db)) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      const session = await client.query('SELECT * FROM sessions WHERE id = $1', [sessionId]);
+      const documents = await client.query('SELECT * FROM documents WHERE session_id = $1', [sessionId]);
+      const questions = await client.query('SELECT * FROM questions WHERE session_id = $1 ORDER BY number', [sessionId]);
+      const answers = await client.query('SELECT * FROM answers WHERE session_id = $1', [sessionId]);
+      const finalChecks = await client.query('SELECT * FROM final_checks WHERE session_id = $1', [sessionId]);
+      const chunks = await client.query('SELECT * FROM document_chunks WHERE session_id = $1 ORDER BY chunk_index', [sessionId]);
+      const finalReport = await client.query('SELECT * FROM final_reports WHERE session_id = $1', [sessionId]);
 
-  return {
-    session,
-    documents,
-    questions,
-    answers,
-    finalChecks,
-    chunks,
-    finalReport: finalReport || null
-  };
+      return {
+        session: session.rows[0] || null,
+        documents: documents.rows,
+        questions: questions.rows,
+        answers: answers.rows,
+        finalChecks: finalChecks.rows,
+        chunks: chunks.rows,
+        finalReport: finalReport.rows[0] || null
+      };
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const session = sqlite.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId) as any;
+    const documents = sqlite.prepare('SELECT * FROM documents WHERE session_id = ?').all(sessionId) as any[];
+    const questions = sqlite.prepare('SELECT * FROM questions WHERE session_id = ? ORDER BY number').all(sessionId) as any[];
+    const answers = sqlite.prepare('SELECT * FROM answers WHERE session_id = ?').all(sessionId) as any[];
+    const finalChecks = sqlite.prepare('SELECT * FROM final_checks WHERE session_id = ?').all(sessionId) as any[];
+    const chunks = sqlite.prepare('SELECT * FROM document_chunks WHERE session_id = ? ORDER BY chunk_index').all(sessionId) as any[];
+    const finalReport = sqlite.prepare('SELECT * FROM final_reports WHERE session_id = ?').get(sessionId) as any;
+
+    return {
+      session,
+      documents,
+      questions,
+      answers,
+      finalChecks,
+      chunks,
+      finalReport: finalReport || null
+    };
+  }
 }
 
 export async function getSessionProgress(sessionId: string) {
