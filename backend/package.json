@@ -2,14 +2,15 @@
   "name": "correcteur-fiscalite-pro-backend",
   "version": "1.0.0",
   "description": "Backend API for Correcteur Fiscalité Pro",
+  "type": "module",
   "main": "dist/index.js",
   "engines": {
     "node": "20.x"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc && node scripts/write-dist-package.cjs",
-    "start": "node dist/index.cjs",
+    "build": "tsc",
+    "start": "node dist/index.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
