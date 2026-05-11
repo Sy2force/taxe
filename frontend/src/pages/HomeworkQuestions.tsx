@@ -99,7 +99,7 @@ export default function HomeworkQuestions() {
 
   const createNewQuestion = async (id: number) => {
     try {
-      const newQuestion = await analysisApi.createHomeworkQuestion(id, '');
+      const newQuestion = await analysisApi.createHomeworkQuestion({ id, questionText: '', draftAnswer: '' });
       setQuestions([...questions, newQuestion]);
       setSelectedQuestion(newQuestion);
     } catch (error) {
@@ -158,7 +158,7 @@ export default function HomeworkQuestions() {
     
     try {
       for (let i = 0; i < detectedQuestions.length; i++) {
-        const newQuestion = await analysisApi.createHomeworkQuestion(questions.length + i + 1, detectedQuestions[i]);
+        const newQuestion = await analysisApi.createHomeworkQuestion({ id: questions.length + i + 1, questionText: detectedQuestions[i], draftAnswer: '' });
         setQuestions(prev => [...prev, newQuestion]);
       }
       setPastedText('');

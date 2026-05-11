@@ -35,14 +35,14 @@ export default function Question() {
     setLoading(true);
     setGuidedAnswer(null);
     try {
-      const result = await analysisApi.analyzeQuestion(question, useAI);
+      const result = await analysisApi.analyzeQuestion(question);
       setAnalysis(result);
     } catch (error) {
       console.error('Analysis failed:', error);
     } finally {
       setLoading(false);
     }
-  }, [question, useAI]);
+  }, [question]);
 
   const handleGenerateGuidedAnswer = useCallback(async () => {
     if (!question.trim()) return;
@@ -57,6 +57,7 @@ export default function Question() {
       }
     } catch (error) {
       console.error('Guided answer generation failed:', error);
+      alert('Erreur lors de la génération de la réponse guidée');
     } finally {
       setLoading(false);
     }

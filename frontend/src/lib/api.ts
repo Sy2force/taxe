@@ -234,7 +234,7 @@ export const documentsApi = {
     return response.data;
   },
 
-  countLines: async (text: string): Promise<{ lineCount: number }> => {
+  countLines: async (text: string): Promise<LineCount> => {
     const response = await axiosInstance.post('/count-lines', { text });
     return response.data;
   },

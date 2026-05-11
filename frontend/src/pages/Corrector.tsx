@@ -24,7 +24,7 @@ export default function Corrector() {
     
     setLoading(true);
     try {
-      const result = await analysisApi.correctAnswer(answer, question, useAI);
+      const result = await analysisApi.correctAnswer(question, answer);
       setCorrection(result);
     } catch (error) {
       console.error('Correction failed:', error);
