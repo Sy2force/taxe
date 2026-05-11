@@ -23,20 +23,17 @@ let pgPool: Pool | null = null;
 
 export async function getDatabase() {
   const isProduction = process.env.NODE_ENV === 'production';
+  const databaseUrl = process.env.DATABASE_URL;
   
-  if (isProduction) {
-    // Use PostgreSQL in production
+  if (isProduction && databaseUrl) {
+    // Use PostgreSQL in production if DATABASE_URL is available
     if (!pgPool) {
-      const databaseUrl = process.env.DATABASE_URL;
-      if (!databaseUrl) {
-        throw new Error('DATABASE_URL is required in production');
-      }
       pgPool = new Pool({ connectionString: databaseUrl });
       await initPostgreSQL(pgPool);
     }
     return pgPool;
   } else {
-    // Use SQLite in development
+    // Use SQLite in development or if DATABASE_URL is not available
     await ensureDbDir();
     if (!sqliteDb) {
       sqliteDb = new Database(DB_PATH);
