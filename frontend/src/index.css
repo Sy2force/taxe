@@ -16,16 +16,73 @@ body {
   line-height: 1.6;
 }
 
+/* ── Symmetric Color Palette ──────────────────────────────────────────────── */
+:root {
+  /* Primary gradient - Indigo to Violet */
+  --gradient-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  --gradient-primary-hover: linear-gradient(135deg, #818cf8 0%, #a78bfa 100%);
+  
+  /* Secondary gradient - Blue to Cyan */
+  --gradient-secondary: linear-gradient(135deg, #3b82f6 0%, #06b6d4 100%);
+  --gradient-secondary-hover: linear-gradient(135deg, #60a5fa 0%, #22d3ee 100%);
+  
+  /* Success gradient - Emerald to Teal */
+  --gradient-success: linear-gradient(135deg, #10b981 0%, #14b8a6 100%);
+  --gradient-success-hover: linear-gradient(135deg, #34d399 0%, #2dd4bf 100%);
+  
+  /* Warning gradient - Amber to Orange */
+  --gradient-warning: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
+  --gradient-warning-hover: linear-gradient(135deg, #fbbf24 0%, #fb923c 100%);
+  
+  /* Error gradient - Red to Rose */
+  --gradient-error: linear-gradient(135deg, #ef4444 0%, #f43f5e 100%);
+  --gradient-error-hover: linear-gradient(135deg, #f87171 0%, #fb7185 100%);
+  
+  /* Purple gradient - Purple to Violet */
+  --gradient-purple: linear-gradient(135deg, #a855f7 0%, #8b5cf6 100%);
+  --gradient-purple-hover: linear-gradient(135deg, #c084fc 0%, #a78bfa 100%);
+  
+  /* Rose gradient - Rose to Pink */
+  --gradient-rose: linear-gradient(135deg, #f43f5e 0%, #ec4899 100%);
+  --gradient-rose-hover: linear-gradient(135deg, #fb7185 0%, #f472b6 100%);
+}
+
+/* ── Mobile-optimized base styles ─────────────────────────────────────────── */
+@media (max-width: 768px) {
+  html { font-size: 14px; }
+  body { font-size: 14px; }
+  
+  /* Larger touch targets on mobile */
+  button, a, input, textarea, select {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Optimized spacing for mobile */
+  .mobile-py { padding-top: 1rem; padding-bottom: 1rem; }
+  .mobile-px { padding-left: 1rem; padding-right: 1rem; }
+  .mobile-p { padding: 1rem; }
+  .mobile-gap { gap: 0.75rem; }
+  
+  /* Larger tap targets */
+  button { padding: 0.75rem 1rem; }
+}
+
 /* Scrollbar — thin, Apple-like */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 999px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
 
+/* Mobile scrollbar - slightly larger for better touch */
+@media (max-width: 768px) {
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+}
+
 /* Selection */
 ::selection { background: rgba(99,102,241,0.35); color: #fff; }
 
-/* Focus ring */
+/* Focus ring - mobile-optimized */
 :focus-visible { outline: 2px solid rgba(99,102,241,0.7); outline-offset: 2px; border-radius: 6px; }
 
 /* Smooth transitions everywhere */
@@ -51,27 +108,27 @@ a, button { transition: all 0.15s ease; }
 
 /* Apple glow button */
 .btn-primary {
-  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  background: var(--gradient-primary);
   box-shadow: 0 0 0 1px rgba(99,102,241,0.4), 0 4px 16px rgba(99,102,241,0.3);
   color: #fff;
   font-weight: 500;
   letter-spacing: -0.01em;
 }
 .btn-primary:hover {
-  background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
+  background: var(--gradient-primary-hover);
   box-shadow: 0 0 0 1px rgba(99,102,241,0.6), 0 6px 24px rgba(99,102,241,0.4);
   transform: translateY(-1px);
 }
 .btn-primary:active { transform: translateY(0); }
 
 .btn-success {
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  background: var(--gradient-success);
   box-shadow: 0 0 0 1px rgba(16,185,129,0.4), 0 4px 16px rgba(16,185,129,0.25);
   color: #fff;
   font-weight: 500;
 }
 .btn-success:hover {
-  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  background: var(--gradient-success-hover);
   box-shadow: 0 0 0 1px rgba(16,185,129,0.6), 0 6px 24px rgba(16,185,129,0.35);
   transform: translateY(-1px);
 }
@@ -94,6 +151,14 @@ a, button { transition: all 0.15s ease; }
   flex-shrink: 0;
 }
 
+/* Mobile-optimized step badge */
+@media (max-width: 768px) {
+  .step-badge {
+    width: 32px; height: 32px;
+    font-size: 14px;
+  }
+}
+
 /* Noise texture overlay for depth */
 body::before {
   content: '';
@@ -103,5 +168,36 @@ body::before {
   pointer-events: none;
   z-index: 0;
   opacity: 0.4;
+}
+
+/* ── Mobile-specific optimizations ───────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Prevent horizontal scroll */
+  body { overflow-x: hidden; }
+  
+  /* Safe area insets for notched devices */
+  .safe-top { padding-top: env(safe-area-inset-top); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  .safe-left { padding-left: env(safe-area-inset-left); }
+  .safe-right { padding-right: env(safe-area-inset-right); }
+  
+  /* Full-width cards on mobile */
+  .mobile-full-width { width: 100%; margin-left: 0; margin-right: 0; }
+  
+  /* Stack flex items on mobile */
+  .mobile-stack { flex-direction: column; }
+  
+  /* Center content on mobile */
+  .mobile-center { text-align: center; }
+  
+  /* Hide non-essential elements on mobile */
+  .mobile-hide { display: none; }
+  
+  /* Show mobile-specific elements */
+  .mobile-show { display: block; }
+}
+
+@media (min-width: 769px) {
+  .mobile-show { display: none; }
 }
 

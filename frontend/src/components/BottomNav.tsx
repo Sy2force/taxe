@@ -2,12 +2,12 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { FileQuestion, BookOpen, MessageSquare, FileText, ShieldCheck, FileCheck } from 'lucide-react';
 
 const navItems = [
-  { path: '/exercise',      icon: FileQuestion, label: 'Exercice', color: 'from-violet-500 to-indigo-500' },
-  { path: '/laws',          icon: BookOpen,     label: 'Lois',     color: 'from-blue-500 to-cyan-500' },
-  { path: '/answers',       icon: MessageSquare,label: 'Suggestions', color: 'from-emerald-500 to-teal-500' },
-  { path: '/final-document',icon: FileText,     label: 'Doc.',     color: 'from-purple-500 to-violet-500' },
-  { path: '/verification',  icon: ShieldCheck,  label: 'Corr.',    color: 'from-amber-500 to-orange-500' },
-  { path: '/final',         icon: FileCheck,    label: 'Final',    color: 'from-rose-500 to-pink-500' },
+  { path: '/exercise',      icon: FileQuestion, label: 'Exercice', color: 'var(--gradient-primary)' },
+  { path: '/laws',          icon: BookOpen,     label: 'Lois',     color: 'var(--gradient-secondary)' },
+  { path: '/answers',       icon: MessageSquare,label: 'Suggestions', color: 'var(--gradient-success)' },
+  { path: '/final-document',icon: FileText,     label: 'Doc.',     color: 'var(--gradient-purple)' },
+  { path: '/verification',  icon: ShieldCheck,  label: 'Corr.',    color: 'var(--gradient-warning)' },
+  { path: '/final',         icon: FileCheck,    label: 'Final',    color: 'var(--gradient-rose)' },
 ];
 
 export default function BottomNav() {
@@ -40,9 +40,12 @@ export default function BottomNav() {
           >
             <div
               className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-200 ${
-                isActive ? `bg-gradient-to-br ${item.color} shadow-lg` : 'bg-transparent'
+                isActive ? 'text-white' : 'bg-transparent'
               }`}
-              style={isActive ? { boxShadow: '0 2px 12px rgba(99,102,241,0.3)' } : {}}
+              style={isActive 
+                ? { background: item.color, boxShadow: '0 2px 12px rgba(99,102,241,0.3)' }
+                : {}
+              }
             >
               <item.icon
                 className={`w-4 h-4 transition-all ${isActive ? 'text-white' : 'text-zinc-600'}`}

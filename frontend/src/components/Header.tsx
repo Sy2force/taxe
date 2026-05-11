@@ -62,7 +62,7 @@ export default function Header() {
         {/* Logo mobile only (visible when no sidebar) */}
         <div className="md:hidden flex items-center gap-2 flex-shrink-0">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center"
-            style={{ background: 'linear-gradient(135deg,#6366f1,#8b5cf6)' }}>
+            style={{ background: 'var(--gradient-primary)', boxShadow: '0 4px 12px rgba(99,102,241,0.4)' }}>
             <span className="text-white text-[10px] font-bold">CF</span>
           </div>
         </div>

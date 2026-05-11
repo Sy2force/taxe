@@ -2,12 +2,12 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { FileQuestion, BookOpen, MessageSquare, FileText, ShieldCheck, FileCheck } from 'lucide-react';
 
 const navItems = [
-  { path: '/exercise',      icon: FileQuestion, label: 'Exercice',        step: '1', color: 'from-violet-500 to-indigo-500' },
-  { path: '/laws',          icon: BookOpen,     label: 'Lois fiscales',   step: '2', color: 'from-blue-500 to-cyan-500' },
-  { path: '/answers',       icon: MessageSquare,label: 'Suggestions',     step: '3', color: 'from-emerald-500 to-teal-500' },
-  { path: '/final-document',icon: FileText,     label: 'Document final', step: '4', color: 'from-purple-500 to-violet-500' },
-  { path: '/verification',  icon: ShieldCheck,  label: 'Correction',     step: '5', color: 'from-amber-500 to-orange-500' },
-  { path: '/final',         icon: FileCheck,    label: 'Final',          step: '6', color: 'from-rose-500 to-pink-500' },
+  { path: '/exercise',      icon: FileQuestion, label: 'Exercice',        step: '1', color: 'var(--gradient-primary)' },
+  { path: '/laws',          icon: BookOpen,     label: 'Lois fiscales',   step: '2', color: 'var(--gradient-secondary)' },
+  { path: '/answers',       icon: MessageSquare,label: 'Suggestions',     step: '3', color: 'var(--gradient-success)' },
+  { path: '/final-document',icon: FileText,     label: 'Document final', step: '4', color: 'var(--gradient-purple)' },
+  { path: '/verification',  icon: ShieldCheck,  label: 'Correction',     step: '5', color: 'var(--gradient-warning)' },
+  { path: '/final',         icon: FileCheck,    label: 'Final',          step: '6', color: 'var(--gradient-rose)' },
 ];
 
 export default function Sidebar() {
@@ -63,8 +63,11 @@ export default function Sidebar() {
                     style={{ background: 'linear-gradient(to bottom,#6366f1,#8b5cf6)' }} />
                 )}
                 <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all ${
-                  isActive ? `bg-gradient-to-br ${item.color} shadow-md` : 'bg-zinc-800/60 group-hover:bg-zinc-700/60'
-                }`}>
+                  isActive ? 'text-white' : 'text-zinc-400 group-hover:text-zinc-300'
+                }`} style={isActive
+                  ? { background: item.color, boxShadow: '0 4px 12px rgba(99,102,241,0.3)' }
+                  : { background: 'rgba(39,39,42,0.8)' }
+                }>
                   <item.icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-zinc-400 group-hover:text-zinc-300'}`} />
                 </div>
                 <span className="text-[13px] font-medium tracking-tight">{item.label}</span>
@@ -117,8 +120,11 @@ export default function Sidebar() {
                   style={{ background: 'linear-gradient(to bottom,#6366f1,#8b5cf6)' }} />
               )}
               <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-                isActive ? `bg-gradient-to-br ${item.color}` : 'bg-zinc-800/60'
-              }`}>
+                isActive ? 'text-white' : 'text-zinc-400'
+              }`} style={isActive
+                ? { background: item.color, boxShadow: '0 4px 12px rgba(99,102,241,0.3)' }
+                : { background: 'rgba(39,39,42,0.8)' }
+              }>
                 <item.icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-zinc-400'}`} />
               </div>
             </button>
