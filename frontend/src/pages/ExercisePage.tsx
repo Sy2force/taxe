@@ -59,6 +59,10 @@ export default function ExercisePage() {
     setShowRawText(false);
     setShowManualMode(false);
     try {
+      // Ensure session exists before upload
+      if (!sessionId) {
+        throw new Error('Session introuvable. Rechargez la page pour créer une nouvelle session.');
+      }
       // Use SessionContext to upload to backend
       await uploadExercise(f);
       const text = sessionData?.documents?.find((d: any) => d.type === 'exercise')?.extracted_text || '';
@@ -72,15 +76,8 @@ export default function ExercisePage() {
       localStorage.setItem('exercise_file', f.name);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';
-      if (errorMessage.includes('Le fichier est trop volumineux')) {
-        setErrorMsg('Le fichier est trop volumineux. Essayez un fichier de moins de 50 Mo.');
-      } else if (errorMessage.includes('Format non supporté')) {
-        setErrorMsg('Format non supporté. Utilisez PDF, DOCX, DOC ou TXT.');
-      } else if (errorMessage.includes('Impossible de contacter le serveur')) {
-        setErrorMsg('Impossible de contacter le serveur Render. Vérifiez que le backend est réveillé.');
-      } else {
-        setErrorMsg(errorMessage);
-      }
+      console.error('Upload error:', err);
+      setErrorMsg(errorMessage);
       setStatus('error');
     } finally {
       setUploading(false);

@@ -100,8 +100,16 @@ router.post('/:sessionId/upload-exercise', upload.single('file'), async (req: Re
     const { sessionId } = req.params;
     const file = req.file;
     
+    console.log("UPLOAD_EXERCISE_BACKEND_START", {
+      sessionId: req.params.sessionId,
+      hasFile: !!req.file,
+      fileName: req.file?.originalname,
+      mimeType: req.file?.mimetype,
+      size: req.file?.size
+    });
+    
     if (!file) {
-      return res.status(400).json({ error: 'Aucun fichier fourni' });
+      return res.status(400).json({ error: 'Aucun fichier reçu par le serveur.' });
     }
 
     const session = await getSession(sessionId);

@@ -23,7 +23,8 @@ export default function Header() {
   useEffect(() => {
     const check = async () => {
       try {
-        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5050'}/health`);
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5050';
+        const res = await fetch(`${apiUrl}/health`);
         setBackendStatus(res.ok ? 'connected' : 'disconnected');
       } catch {
         setBackendStatus('disconnected');

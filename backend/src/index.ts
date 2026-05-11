@@ -15,22 +15,7 @@ const PORT = Number(process.env.PORT) || 5051;
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) || [];
 
 app.use(cors({
-  origin: (origin, callback) => {
-    // Allow no-origin requests (curl, Render health checks, same-origin)
-    if (!origin) return callback(null, true);
-    
-    // Allow configured origins
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    
-    // Allow Vercel preview deployments
-    if (origin.endsWith('.vercel.app')) return callback(null, true);
-    
-    // Allow all origins in development
-    if (process.env.NODE_ENV !== 'production') return callback(null, true);
-    
-    // Block unknown origins in production
-    callback(new Error('CORS blocked'));
-  },
+  origin: '*',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
