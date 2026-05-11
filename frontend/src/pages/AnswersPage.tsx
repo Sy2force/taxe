@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Copy, CheckCircle, RefreshCw, Loader2, ClipboardCopy, ChevronRight, Edit, Save, X, Sparkles, MessageSquare, FileText, Eye } from 'lucide-react';
+import { useSessionContext } from '../contexts/SessionContext';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5050';
 
@@ -37,36 +38,45 @@ interface Answer {
   updatedAt?: string;
 }
 
-function loadQuestionsFromStorage(): Question[] {
-  try {
-    const raw = localStorage.getItem('exercise_questions');
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-function countLines(text: string): number {
-  return text.split('\n').length;
-}
-
-function loadAnswersFromStorage(): Map<number, Answer> {
-  try {
-    const raw = localStorage.getItem('answers_data');
-    if (!raw) return new Map();
-    const obj = JSON.parse(raw) as Record<string, Answer>;
-    const map = new Map<number, Answer>();
-    for (const [k, v] of Object.entries(obj)) map.set(Number(k), v);
-    return map;
-  } catch { return new Map(); }
-}
-
 export default function AnswersPage() {
-  const [questions] = useState<Question[]>(loadQuestionsFromStorage);
-  const [answers, setAnswers] = useState<Map<number, Answer>>(loadAnswersFromStorage);
+  const { sessionData, generateAnswer } = useSessionContext();
+  const [questions] = useState<Question[]>([]);
+  const [answers, setAnswers] = useState<Map<number, Answer>>(new Map());
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<Record<number, string>>({});
   const hasLoaded = useRef(false);
   const navigate = useNavigate();
+
+  // Load questions and answers from sessionData
+  useEffect(() => {
+    if (sessionData) {
+      const qs = sessionData.questions.map((q: any) => ({
+        id: q.number,
+        text: q.original_text || q.originalHebrew || '',
+        detectedLanguage: q.language || 'he'
+      }));
+      // @ts-ignore
+      setQuestions(qs);
+
+      const ansMap = new Map<number, Answer>();
+      sessionData.answers.forEach((a: any) => {
+        ansMap.set(a.question_id, {
+          questionId: a.question_id,
+          answer: a.hebrew_answer || '',
+          editedAnswer: a.edited_answer,
+          understanding: a.french_explanation || '',
+          reasoning: a.reasoning || '',
+          sources: a.sources_json || [],
+          status: a.status || 'not_started',
+          copied: a.copied || false,
+          generatedAt: a.created_at,
+          updatedAt: a.updated_at
+        });
+      });
+      setAnswers(ansMap);
+    }
+  }, [sessionData]);
 
   const saveAnswers = useCallback((map: Map<number, Answer>) => {
     const result: Record<number, Answer> = {};
@@ -77,73 +87,22 @@ export default function AnswersPage() {
 
   const generateOne = useCallback(async (q: Question, map: Map<number, Answer>) => {
     try {
-      const res = await fetch(`${API}/api/generate-answer`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ questionId: q.id, questionText: q.text }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erreur');
-      const answerText = data.answer || '';
-      const lineCount = countLines(answerText);
-      const exceedsLimit = lineCount > 15;
-      map.set(q.id, {
-        questionId: q.id,
-        answer: answerText,
-        understanding: data.understanding || '',
-        reasoning: data.reasoning || '',
-        keywordsHe: data.keywordsHe || [],
-        keywordsFr: data.keywordsFr || [],
-        sources: data.sources || [],
-        status: data.status === 'no_source' || !(data.sources || []).length ? 'no_source' : (exceedsLimit ? 'needs_review' : 'done'),
-        copied: false,
-        generatedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+      await generateAnswer(q.id.toString());
+      // After generation, the sessionData will be updated automatically
+      // We'll let the useEffect handle the update
     } catch {
       map.set(q.id, { questionId: q.id, answer: '', sources: [], status: 'error', copied: false });
     }
     setAnswers(new Map(map));
-    saveAnswers(map);
-  }, [saveAnswers]);
-
-  const loadAnswers = useCallback(async (qs: Question[], forceAll = false) => {
-    if (qs.length === 0) return;
-    setLoading(true);
-    const newMap = new Map<number, Answer>(answers);
-    const toProcess: Question[] = qs.filter(q => {
-      if (forceAll) return true;
-      const existing = newMap.get(q.id);
-      return !existing || existing.status === 'error' || existing.status === 'loading';
-    });
-    for (const q of toProcess) {
-      newMap.set(q.id, { questionId: q.id, answer: '', sources: [], status: 'loading', copied: false });
-    }
-    setAnswers(newMap);
-    for (const q of toProcess) {
-      await generateOne(q, newMap);
-    }
-    setLoading(false);
-  }, [answers, generateOne]);
+  }, [generateAnswer]);
 
   useEffect(() => {
     if (hasLoaded.current) return;
     hasLoaded.current = true;
     if (questions.length === 0) return;
-    const requestedAt = localStorage.getItem('generation_requested_at');
-    const cached = loadAnswersFromStorage();
-    const cachedAt = localStorage.getItem('answers_saved_at');
-    const isFreshRequest = !!requestedAt && (!cachedAt || new Date(requestedAt) > new Date(cachedAt));
-    const incomplete = questions.filter(q => {
-      const a = cached.get(q.id);
-      return !a || a.status === 'loading' || a.status === 'error';
-    });
-    if (isFreshRequest || incomplete.length > 0) {
-      const t = setTimeout(() => loadAnswers(questions, isFreshRequest), 0);
-      return () => clearTimeout(t);
-    }
-    return undefined;
-  }, [questions, loadAnswers]);
+    // Answers are loaded from sessionData via the useEffect above
+    // No need to load from localStorage anymore
+  }, [questions]);
 
   useEffect(() => {
     if (answers.size > 0) saveAnswers(answers);

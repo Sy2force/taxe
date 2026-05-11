@@ -1,8 +1,7 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, BookOpen, CheckCircle, AlertCircle, ChevronRight, Loader2, Zap } from 'lucide-react';
-
-const API = import.meta.env.VITE_API_URL || 'http://localhost:5050';
+import { useSessionContext } from '../contexts/SessionContext';
 
 interface LawsInfo {
   name: string;
@@ -13,6 +12,7 @@ interface LawsInfo {
 }
 
 export default function LawsPage() {
+  const { sessionData, uploadLaws } = useSessionContext();
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
@@ -26,30 +26,15 @@ export default function LawsPage() {
     setStatus('idle');
     setErrorMsg('');
     try {
-      // Check backend health first
-      try {
-        const healthRes = await fetch(`${API}/health`);
-        if (!healthRes.ok) {
-          throw new Error('Impossible de contacter le serveur Render. Vérifiez que le backend est réveillé.');
-        }
-      } catch (healthErr) {
-        throw new Error('Impossible de contacter le serveur Render. Vérifiez que le backend est réveillé.');
-      }
-
-      const formData = new FormData();
-      formData.append('file', f);
-      const res = await fetch(`${API}/api/upload-laws`, { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'import');
+      await uploadLaws(f);
+      const lawsDoc = sessionData?.documents?.find((d: any) => d.type === 'laws');
       setLawsInfo({
         name: f.name,
-        chars: data.chars || data.content?.length || 0,
-        pages: data.pages || Math.ceil((data.chars || data.content?.length || 0) / 2000),
-        chunks: data.chunks || 0,
-        documentId: data.id || '',
+        chars: lawsDoc?.character_count || 0,
+        pages: lawsDoc?.page_count || 0,
+        chunks: lawsDoc?.chunks_count || 0,
+        documentId: lawsDoc?.id || '',
       });
-      localStorage.setItem('laws_document_id', data.id || '');
-      localStorage.setItem('laws_document_name', f.name);
       setStatus('success');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';

@@ -3,8 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Upload, FileText, CheckCircle, AlertCircle, ChevronRight, Plus, Trash2, Loader2, Eye, Scissors, Copy, Share2 } from 'lucide-react';
 import { useSessionContext } from '../contexts/SessionContext';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:5050';
-
 interface DetectedQuestion {
   id: number;
   originalHebrew: string;
@@ -16,84 +14,12 @@ interface DetectedQuestion {
   status: "detected" | "validated" | "needs_review";
 }
 
-// ─── Détection robuste FR + HE ──────────────────────────────────────────────
-
-// Marqueurs de début de question/exercice (début de ligne)
-const QUESTION_START_RE = new RegExp(
-  [
-    // Hébreu : שאלה 1, שאלה 2, etc. (specific pattern - highest priority)
-    String.raw`^(שאלה)\s+\d+`,
-    // Hébreu : תרגיל / סעיף / חלק + numéro
-    String.raw`^(תרגיל|סעיף|חלק)\s*\d+`,
-    // Hébreu lettre seule : א. ב. ג. / א) ב) ג) / א' ב' ג'
-    String.raw`^[\u05D0-\u05D9][.)']\s*\S`,
-    // Français : Question / Exercice / Cas / Partie
-    String.raw`^(question|exercice|cas|partie)\s*\d*`,
-    // Numérotation : 1. 2. 1) 2) 1- 2-
-    String.raw`^\d{1,2}[.)-]\s*\S`,
-  ].join('|'),
-  'i'
-);
-
-// ─── Extraction robuste des questions ──────────────────────────────────────────────
-function extractQuestionsFromText(fullText: string): DetectedQuestion[] {
-  const lines = fullText.split('\n');
-  const questions: DetectedQuestion[] = [];
-  let currentQuestion: DetectedQuestion | null = null;
-
-  // Stop marker: academic guidelines
-  const ACADEMIC_GUIDELINES_MARKER = 'קווים מנחים להגשת עבודה אקדמית';
-  const academicIndex = lines.findIndex(l => l.includes(ACADEMIC_GUIDELINES_MARKER));
-  const relevantLines = academicIndex > 0 ? lines.slice(0, academicIndex) : lines;
-
-  for (const line of relevantLines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-
-    // Check if this line starts a new question
-    const match = trimmed.match(QUESTION_START_RE);
-    if (match) {
-      // Save previous question if exists
-      if (currentQuestion && currentQuestion.originalHebrew.length > 10) {
-        questions.push(currentQuestion);
-      }
-
-      // Start new question
-      currentQuestion = {
-        id: questions.length + 1,
-        originalHebrew: trimmed,
-        frenchTranslation: '',
-        frenchUnderstanding: '',
-        points: '',
-        answerLimitLines: 15,
-        bullets: [],
-        status: 'detected'
-      };
-    } else if (currentQuestion) {
-      // Append to current question
-      currentQuestion.originalHebrew += '\n' + trimmed;
-
-      // Detect bullet points
-      if (/^[•\-\*]\s/.test(trimmed)) {
-        currentQuestion.bullets.push(trimmed);
-      }
-    }
-  }
-
-  // Save last question
-  if (currentQuestion && currentQuestion.originalHebrew.length > 10) {
-    questions.push(currentQuestion);
-  }
-
-  return questions;
-}
-
 export default function ExercisePage() {
   const {
     sessionId,
     sessionData,
     isReadOnly,
-    refreshSession
+    uploadExercise
   } = useSessionContext();
 
   const [uploading, setUploading] = useState(false);
@@ -157,53 +83,15 @@ export default function ExercisePage() {
     setShowRawText(false);
     setShowManualMode(false);
     try {
-      // Try session-based upload first
-      if (sessionId) {
-        try {
-          const formData = new FormData();
-          formData.append('file', f);
-          const res = await fetch(`${API}/sessions/${sessionId}/upload-exercise`, {
-            method: 'POST',
-            body: formData
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'import');
-          const text = data.extractedText || '';
-          if (text.length === 0) {
-            throw new Error('Le texte du document n\'a pas pu être extrait. Convertissez le fichier en .docx ou en PDF avec texte sélectionnable.');
-          }
-          setExtractedText(text);
-          setManualText(text);
-          setFileInfo({ name: f.name, chars: text.length });
-          setStatus('success');
-          localStorage.setItem('exercise_file', f.name);
-          await refreshSession();
-          return;
-        } catch (sessionError) {
-          console.log('Session upload failed, falling back to old method:', sessionError);
-          // Fallback to old method if session upload fails
-        }
-      }
-      
-      // Fallback to old method (for local testing without database)
-      const healthRes = await fetch(`${API}/health`);
-      if (!healthRes.ok) {
-        throw new Error('Impossible de contacter le serveur. Vérifiez que le backend est réveillé.');
-      }
-      const formData = new FormData();
-      formData.append('file', f);
-      const res = await fetch(`${API}/api/upload-exercise`, { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erreur lors de l\'import');
-      const text = data.content || data.text || '';
+      // Use SessionContext to upload to backend
+      await uploadExercise(f);
+      const text = sessionData?.documents?.find((d: any) => d.type === 'exercise')?.extracted_text || '';
       if (text.length === 0) {
         throw new Error('Le texte du document n\'a pas pu être extrait. Convertissez le fichier en .docx ou en PDF avec texte sélectionnable.');
       }
       setExtractedText(text);
       setManualText(text);
       setFileInfo({ name: f.name, chars: text.length });
-      const detected = extractQuestionsFromText(text);
-      saveAndSet(detected);
       setStatus('success');
       localStorage.setItem('exercise_file', f.name);
     } catch (err) {
@@ -213,7 +101,7 @@ export default function ExercisePage() {
       } else if (errorMessage.includes('Format non supporté')) {
         setErrorMsg('Format non supporté. Utilisez PDF, DOCX, DOC ou TXT.');
       } else if (errorMessage.includes('Impossible de contacter le serveur')) {
-        setErrorMsg('Impossible de contacter le serveur. Vérifiez que le backend est réveillé.');
+        setErrorMsg('Impossible de contacter le serveur Render. Vérifiez que le backend est réveillé.');
       } else {
         setErrorMsg(errorMessage);
       }
