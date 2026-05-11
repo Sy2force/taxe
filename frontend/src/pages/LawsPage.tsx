@@ -20,6 +20,10 @@ export default function LawsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
+  // Workflow guard: check if exercise is imported
+  const exerciseDocument = sessionData?.documents?.find((d: any) => d.type === 'exercise');
+  const hasExercise = !!exerciseDocument;
+
   const handleUpload = async (f: File) => {
     setUploading(true);
     setStatus('idle');
@@ -60,8 +64,23 @@ export default function LawsPage() {
 
   return (
     <div className="min-h-screen px-4 sm:px-6 lg:px-8 py-6 sm:py-10 max-w-3xl mx-auto">
+      {/* Workflow guard: exercise not imported */}
+      {!hasExercise && (
+        <div className="flex flex-col items-center justify-center py-24">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)' }}>
+            <AlertCircle className="w-7 h-7 text-amber-400" />
+          </div>
+          <h2 className="text-[18px] font-semibold text-text-primary mb-2">Exercice non importé</h2>
+          <p className="text-[13px] text-text-tertiary mb-6">Importez d'abord le PDF de l'exercice pour extraire les questions.</p>
+          <button onClick={() => navigate('/exercise')} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all" style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow: '0 4px 12px rgba(99,102,241,0.25)' }}>
+            Importer l'exercice
+          </button>
+        </div>
+      )}
 
       {/* Page header */}
+      {hasExercise && (
+      <>
       <div className="mb-10">
         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-4 text-[11px] font-semibold uppercase tracking-widest"
           style={{ background: 'rgba(6,182,212,0.1)', border: '1px solid rgba(6,182,212,0.2)', color: '#67e8f9' }}>
@@ -184,6 +203,8 @@ export default function LawsPage() {
           <BookOpen className="w-10 h-10 mx-auto mb-3 text-zinc-800" />
           <p className="text-[13px] text-text-muted">Importez le document de lois fiscales pour commencer.</p>
         </div>
+      )}
+      </>
       )}
     </div>
   );

@@ -14,6 +14,8 @@ export default function FinalDocumentPage() {
 
   const finalDocument = sessionData?.documents?.find((d: any) => d.type === 'final');
   const studentAnswers = sessionData?.answers?.filter((a: any) => a.status === 'completed') || [];
+  const answers = sessionData?.answers || [];
+  const hasAnswers = answers.length > 0;
 
   const handleUpload = async (f: File) => {
     setUploading(true);
@@ -60,7 +62,23 @@ export default function FinalDocumentPage() {
 
   return (
     <div className="min-h-screen px-4 sm:px-6 lg:px-8 py-6 sm:py-10 max-w-3xl mx-auto">
+      {/* Workflow guard: answers not generated */}
+      {!hasAnswers && (
+        <div className="flex flex-col items-center justify-center py-24">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)' }}>
+            <AlertCircle className="w-7 h-7 text-amber-400" />
+          </div>
+          <h2 className="text-[18px] font-semibold text-text-primary mb-2">Suggestions non générées</h2>
+          <p className="text-[13px] text-text-tertiary mb-6">Générez d'abord les suggestions de réponses basées sur les lois fiscales.</p>
+          <button onClick={() => navigate('/answers')} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all" style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow: '0 4px 12px rgba(99,102,241,0.25)' }}>
+            Générer les suggestions
+          </button>
+        </div>
+      )}
+
       {/* Page header */}
+      {hasAnswers && (
+      <>
       <div className="mb-10">
         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-4 text-[11px] font-semibold uppercase tracking-widest"
           style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.2)', color: '#a5b4fc' }}>
@@ -162,6 +180,8 @@ export default function FinalDocumentPage() {
           </button>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }

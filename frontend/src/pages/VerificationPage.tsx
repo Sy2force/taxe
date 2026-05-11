@@ -12,6 +12,8 @@ export default function VerificationPage() {
   const finalChecks = sessionData?.finalChecks || [];
   const lawsDocument = sessionData?.documents?.find((d: any) => d.type === 'laws');
   const hasLaws = !!lawsDocument;
+  const finalDocument = sessionData?.documents?.find((d: any) => d.type === 'final');
+  const hasFinalDocument = !!finalDocument;
 
   const handleCorrect = async () => {
     if (!hasLaws) return;
@@ -45,6 +47,23 @@ export default function VerificationPage() {
           <p className="text-[13px] text-text-tertiary mb-6">Importez d'abord le PDF des lois fiscales pour corriger les réponses.</p>
           <button onClick={() => navigate('/laws')} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all" style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow: '0 4px 12px rgba(99,102,241,0.25)' }}>
             <BookOpen className="w-4 h-4" /> Importer les lois fiscales
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasFinalDocument) {
+    return (
+      <div className="min-h-screen px-4 sm:px-6 lg:px-8 py-6 sm:py-10 max-w-3xl mx-auto">
+        <div className="flex flex-col items-center justify-center py-24">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)' }}>
+            <AlertCircle className="w-7 h-7 text-amber-400" />
+          </div>
+          <h2 className="text-[18px] font-semibold text-text-primary mb-2">Document final non importé</h2>
+          <p className="text-[13px] text-text-tertiary mb-6">Importez d'abord le PDF de l'exercice rempli par l'étudiant.</p>
+          <button onClick={() => navigate('/final-document')} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all" style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow: '0 4px 12px rgba(99,102,241,0.25)' }}>
+            Importer le document final
           </button>
         </div>
       </div>

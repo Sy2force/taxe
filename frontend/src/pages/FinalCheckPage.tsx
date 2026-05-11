@@ -11,6 +11,7 @@ export default function FinalCheckPage() {
   const questions = sessionData?.questions || [];
   const finalChecks = sessionData?.finalChecks || [];
   const finalReport = sessionData?.finalReport;
+  const hasVerification = finalChecks.length > 0;
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -54,7 +55,23 @@ export default function FinalCheckPage() {
 
   return (
     <div className="min-h-screen px-4 sm:px-6 lg:px-8 py-6 sm:py-10 max-w-3xl mx-auto">
+      {/* Workflow guard: verification not done */}
+      {!hasVerification && (
+        <div className="flex flex-col items-center justify-center py-24">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)' }}>
+            <AlertCircle className="w-7 h-7 text-amber-400" />
+          </div>
+          <h2 className="text-[18px] font-semibold text-text-primary mb-2">Vérification non effectuée</h2>
+          <p className="text-[13px] text-text-tertiary mb-6">Effectuez d'abord la correction des réponses avec les lois fiscales.</p>
+          <button onClick={() => navigate('/verification')} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all" style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow: '0 4px 12px rgba(99,102,241,0.25)' }}>
+            Corriger les réponses
+          </button>
+        </div>
+      )}
+
       {/* Page header */}
+      {hasVerification && (
+      <>
       <div className="mb-10">
         <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-4 text-[11px] font-semibold uppercase tracking-widest" style={{ background: 'rgba(244,63,94,0.1)', border: '1px solid rgba(244,63,94,0.2)', color: '#fda4af' }}>
           Étape 6
@@ -186,6 +203,8 @@ export default function FinalCheckPage() {
             </button>
           </div>
         </>
+      )}
+      </>
       )}
     </div>
   );
