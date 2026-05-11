@@ -17,6 +17,7 @@ interface Source {
   documentName: string;
   relevanceScore?: number;
   matchedTerms?: string[];
+  reason?: string;
 }
 
 type AnswerStatus = 'not_started' | 'loading' | 'generating' | 'done' | 'needs_review' | 'no_source' | 'error' | 'copied';
@@ -26,6 +27,7 @@ interface Answer {
   answer: string;
   editedAnswer?: string;
   understanding?: string;
+  frenchExplanation?: string;
   reasoning?: string;
   keywordsHe?: string[];
   keywordsFr?: string[];
@@ -476,8 +478,16 @@ function AnswerDetailPanel({ question, answer, onRegenerate, onCopy, onCopyWithS
       {/* Compréhension en français */}
       {answer.understanding && (
         <div className="rounded-2xl p-5" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.14)' }}>
-          <h3 className="text-[13px] font-semibold text-indigo-400 uppercase tracking-widest mb-2">Compréhension en français</h3>
+          <h3 className="text-[13px] font-semibold text-indigo-400 uppercase tracking-widest mb-2">Question en français</h3>
           <p className="text-[13px] text-text-secondary leading-relaxed">{answer.understanding}</p>
+        </div>
+      )}
+
+      {/* Explication en français */}
+      {answer.frenchExplanation && (
+        <div className="rounded-2xl p-5" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.14)' }}>
+          <h3 className="text-[13px] font-semibold text-amber-400 uppercase tracking-widest mb-2">Explication en français</h3>
+          <p className="text-[13px] text-text-secondary leading-relaxed">{answer.frenchExplanation}</p>
         </div>
       )}
 
@@ -530,15 +540,24 @@ function AnswerDetailPanel({ question, answer, onRegenerate, onCopy, onCopyWithS
             style={copyFeedback[question.id * 10 + 1]
               ? { background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: '#6ee7b7' }
               : { background: 'rgba(24,24,27,0.8)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
-            <Copy className="w-3.5 h-3.5" /> {copyFeedback[question.id * 10 + 1] || 'Copier la réponse'}
+            <Copy className="w-3.5 h-3.5" /> {copyFeedback[question.id * 10 + 1] || 'Copier réponse hébreu'}
           </button>
           <button onClick={onCopyWithSources}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium transition-all"
             style={copyFeedback[question.id * 10 + 2]
               ? { background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: '#6ee7b7' }
               : { background: 'rgba(24,24,27,0.8)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
-            <Copy className="w-3.5 h-3.5" /> {copyFeedback[question.id * 10 + 2] || 'Copier + sources'}
+            <Copy className="w-3.5 h-3.5" /> {copyFeedback[question.id * 10 + 2] || 'Copier hébreu + sources'}
           </button>
+          {answer.frenchExplanation && (
+            <button onClick={() => onCopy(answer.frenchExplanation || '')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[12px] font-medium transition-all"
+              style={copyFeedback[question.id * 10 + 3]
+                ? { background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: '#6ee7b7' }
+                : { background: 'rgba(24,24,27,0.8)', border: '1px solid rgba(255,255,255,0.08)', color: '#71717a' }}>
+              <Copy className="w-3.5 h-3.5" /> {copyFeedback[question.id * 10 + 3] || 'Copier explication française'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -656,7 +675,9 @@ function AnswerDetailPanel({ question, answer, onRegenerate, onCopy, onCopyWithS
 
       {/* Points à vérifier */}
       <div className="rounded-2xl p-5" style={{ background: 'rgba(245,158,11,0.04)', border: '1px solid rgba(245,158,11,0.12)' }}>
-        <h3 className="text-[13px] font-semibold text-amber-400 uppercase tracking-widest mb-3">Points à vérifier avant de copier</h3>
+        <h3 className="text-[13px] font-semibold text-amber-400 uppercase tracking-widest mb-2">Brouillon d'aide à la rédaction</h3>
+        <p className="text-[12px] text-amber-400/80 mb-3">Vérifiez les sources et reformulez avec vos propres mots avant soumission.</p>
+        <p className="text-[11px] text-zinc-500 mb-2">Validation stricte basée uniquement sur les sources du document.</p>
         <ul className="space-y-1.5 text-[11px] text-amber-400/80">
           <li className="flex items-center gap-2">
             <CheckCircle className="w-3.5 h-3.5" /> Source suffisante ?

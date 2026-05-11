@@ -49,6 +49,13 @@ export default function ExercisePage() {
         status: (q.status || 'detected') as "detected" | "validated" | "needs_review"
       }));
       setQuestions(sessionQuestions);
+      setExtractedText(sessionData.documents?.find((d: any) => d.type === 'exercise')?.extracted_text || '');
+      setManualText(sessionData.documents?.find((d: any) => d.type === 'exercise')?.extracted_text || '');
+      setFileInfo({ 
+        name: sessionData.documents?.find((d: any) => d.type === 'exercise')?.filename || '',
+        chars: sessionData.documents?.find((d: any) => d.type === 'exercise')?.character_count || 0
+      });
+      setStatus('success');
     }
   }, [sessionData]);
 
@@ -73,7 +80,6 @@ export default function ExercisePage() {
       setManualText(text);
       setFileInfo({ name: f.name, chars: text.length });
       setStatus('success');
-      localStorage.setItem('exercise_file', f.name);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';
       console.error('Upload error:', err);

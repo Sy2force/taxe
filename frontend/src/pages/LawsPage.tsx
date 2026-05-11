@@ -61,13 +61,7 @@ export default function LawsPage() {
 
   // Déclenche la génération côté /answers — la page Answers gère tout (résilient au refresh / navigation)
   const handleGenerateAnswers = () => {
-    const questionsRaw = localStorage.getItem('exercise_questions');
-    if (!questionsRaw) {
-      setGenError('Aucune question trouvée. Retournez à l\'étape Exercice pour importer vos questions.');
-      return;
-    }
-
-    const questions = JSON.parse(questionsRaw);
+    const questions = sessionData?.questions || [];
 
     // Validate 8 questions detected
     if (questions.length < 8) {
@@ -76,7 +70,7 @@ export default function LawsPage() {
     }
 
     // Validate each question has Hebrew original
-    const missingHebrew = questions.some((q: any) => !q.originalHebrew || q.originalHebrew.trim().length < 5);
+    const missingHebrew = questions.some((q: any) => !q.original_text || q.original_text.trim().length < 5);
     if (missingHebrew) {
       setGenError('Certaines questions n\'ont pas de texte hébreu. Complétez toutes les questions avant de générer les réponses.');
       return;
@@ -95,8 +89,6 @@ export default function LawsPage() {
     }
 
     // All validations passed - proceed to generation
-    localStorage.setItem('generation_requested_at', new Date().toISOString());
-    localStorage.removeItem('answers_data');
     navigate('/answers');
   };
 
