@@ -54,7 +54,13 @@ async function extractFromDocx(filePath: string): Promise<{ text: string }> {
   try {
     const dataBuffer = await fs.readFile(filePath);
     const result = await mammoth.extractRawText({ buffer: dataBuffer });
-    const text = result.value.trim();
+    let text = result.value.trim();
+    
+    // Clean up text artifacts
+    text = text.replace(/\r\n/g, '\n');
+    text = text.replace(/\n{3,}/g, '\n\n');
+    text = text.replace(/[^\S\n]+/g, ' ');
+    
     if (text.length === 0) {
       throw new Error('Le fichier DOCX a été ouvert, mais aucun texte exploitable n\'a été trouvé.');
     }
@@ -116,10 +122,17 @@ async function extractFromDoc(filePath: string): Promise<{ text: string }> {
 
     const dataBuffer = await fs.readFile(docxOutputPath);
     const result = await mammoth.extractRawText({ buffer: dataBuffer });
-    const text = result.value.trim();
+    let text = result.value.trim();
+    
+    // Clean up text artifacts
+    text = text.replace(/\r\n/g, '\n');
+    text = text.replace(/\n{3,}/g, '\n\n');
+    text = text.replace(/[^\S\n]+/g, ' ');
+    
     if (text.length === 0) {
       throw new Error('Le fichier .doc a été converti, mais aucun texte exploitable n\'a été trouvé.');
     }
+    
     await fs.rm(tempDir, { recursive: true, force: true });
     return { text };
   } catch (error) {
