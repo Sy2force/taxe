@@ -73,13 +73,22 @@ export default function ExercisePage() {
       
       // Use the returned data directly instead of relying on sessionData
       const text = uploadData.extracted_text || uploadData.extractedText || '';
+      const questionsDetected = uploadData.questionsDetected || 0;
+      
       if (text.length === 0) {
         throw new Error('Le texte du document n\'a pas pu être extrait. Convertissez le fichier en .docx ou en PDF avec texte sélectionnable.');
       }
+      
       setExtractedText(text);
       setManualText(text);
       setFileInfo({ name: f.name, chars: text.length });
       setStatus('success');
+      
+      // Log for debugging
+      console.log('Upload successful:', {
+        chars: text.length,
+        questionsDetected
+      });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';
       console.error('Upload error:', err);
@@ -318,6 +327,24 @@ export default function ExercisePage() {
               </div>
             ))}
           </div>
+          
+          {/* Show warning if no questions detected */}
+          {questions.length === 0 && (
+            <div className="mt-4 p-4 rounded-xl" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
+              <p className="text-[12px] font-medium text-amber-400 mb-2">Aucune question détectée automatiquement</p>
+              <p className="text-[11px] text-amber-400/70 mb-3">Le texte a été extrait mais le système n'a pas reconnu de questions. Vous pouvez utiliser le mode manuel ou le découpage intelligent.</p>
+              <div className="flex gap-2">
+                <button onClick={() => setShowRawText(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                  style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)', color: '#a5b4fc' }}>
+                  <Eye className="w-3.5 h-3.5" /> Voir texte extrait
+                </button>
+                <button onClick={() => setShowManualMode(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                  style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: '#6ee7b7' }}>
+                  <Scissors className="w-3.5 h-3.5" /> Découper manuellement
+                </button>
+              </div>
+            </div>
+          )}
           {questions.length < 8 && questions.length > 0 && (
             <div className="mt-3 flex items-start gap-2 p-3 rounded-xl"
               style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.18)' }}>

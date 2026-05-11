@@ -143,6 +143,14 @@ router.post('/:sessionId/upload-exercise', upload.single('file'), async (req: Re
 
     const { text, pages } = await extractTextFromFile(file);
     
+    // Log the extracted text for debugging
+    console.log('=== EXTRACTED TEXT DEBUG ===');
+    console.log('Character count:', text.length);
+    console.log('Page count:', pages);
+    console.log('First 3000 characters:');
+    console.log(text.slice(0, 3000));
+    console.log('=== END EXTRACTED TEXT DEBUG ===');
+    
     const doc = {
       id: uuidv4(),
       sessionId,
@@ -1020,44 +1028,83 @@ router.post('/:sessionId/final', async (req: Request, res: Response) => {
   }
 });
 
-// Helper function to extract questions (simplified)
-function extractQuestionsFromText(text: string): Array<{ number: number; text: string }> {
-  const lines = text.split('\n');
-  const questions: Array<{ number: number; text: string }> = [];
-  let currentNumber = 1;
-  let currentText = '';
+// Helper function to extract questions with improved Hebrew detection and fallback
+function extractQuestionsFromText(text: string): Array<{ number: number; text: string; source: string }> {
+  console.log('=== EXTRACT QUESTIONS DEBUG ===');
+  console.log('Text length:', text.length);
+  
+  const normalized = text
+    .replace(/\r/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 
   // Stop before this marker
   const stopMarker = 'קווים מנחים להגשת עבודה אקדמית';
-  const stopIndex = text.indexOf(stopMarker);
-  const textToProcess = stopIndex !== -1 ? text.substring(0, stopIndex) : text;
+  const stopIndex = normalized.indexOf(stopMarker);
+  const textToProcess = stopIndex !== -1 ? normalized.substring(0, stopIndex) : normalized;
 
-  for (const line of textToProcess.split('\n')) {
-    const trimmed = line.trim();
-    
-    // Multiple Hebrew question detection patterns
-    if (trimmed.match(/^שאלה\s+\d+/) || 
-        trimmed.match(/^שאלה\s+[א-ת]/) ||
-        trimmed.match(/^Question\s+\d+/i) ||
-        trimmed.match(/^Exercice\s+\d+/i) ||
-        trimmed.match(/^\s*\d+[\.\)]/)) {
-      if (currentText) {
-        questions.push({ number: currentNumber++, text: currentText.trim() });
-      }
-      currentText = trimmed;
-    } else if (currentText) {
-      // Only add non-empty lines
-      if (trimmed.length > 0) {
-        currentText += '\n' + trimmed;
+  console.log('Text to process length:', textToProcess.length);
+
+  // Hebrew question patterns
+  const patterns = [
+    // שאלה 1, שאלה א, שאלה מספר 1
+    /(?:^|\n)\s*(?:שאלה|שאלה מספר)\s*([0-9]+|[א-ת][׳']?)[:.)\-\s]+([\s\S]*?)(?=\n\s*(?:שאלה|שאלה מספר)\s*(?:[0-9]+|[א-ת][׳']?)[:.)\-\s]+|$)/g,
+    // 1. 1) 
+    /(?:^|\n)\s*([0-9]+)[.)]\s+([\s\S]*?)(?=\n\s*[0-9]+[.)]\s+|$)/g,
+    // א. א)
+    /(?:^|\n)\s*([א-ת][׳']?)[.)]\s+([\s\S]*?)(?=\n\s*[א-ת][׳']?[.)]\s+|$)/g,
+    // סעיף א, חלק א
+    /(?:^|\n)\s*(?:סעיף|חלק)\s*([א-ת][׳']?|[0-9]+)[:.)\-\s]+([\s\S]*?)(?=\n\s*(?:סעיף|חלק)\s*(?:[א-ת][׳']?|[0-9]+)[:.)\-\s]+|$)/g,
+    // Question 1
+    /(?:^|\n)\s*Question\s*([0-9]+)[:.)\-\s]+([\s\S]*?)(?=\n\s*Question\s*[0-9]+[:.)\-\s]+|$)/gi
+  ];
+
+  const questions: Array<{ number: number; text: string; source: string }> = [];
+
+  for (const pattern of patterns) {
+    console.log('Trying pattern:', pattern);
+    let match;
+    while ((match = pattern.exec(textToProcess)) !== null) {
+      const body = match[2]?.trim();
+      console.log('Match found, body length:', body?.length);
+      
+      if (body && body.length > 30) {
+        questions.push({
+          number: questions.length + 1,
+          text: body,
+          source: "auto-regex"
+        });
       }
     }
+
+    console.log('Pattern found', questions.length, 'questions');
+    if (questions.length > 0) break;
   }
 
-  // Don't forget the last question
-  if (currentText) {
-    questions.push({ number: currentNumber, text: currentText.trim() });
+  // Fallback: intelligent paragraph splitting
+  if (questions.length === 0) {
+    console.log('No questions found with regex, trying intelligent paragraph splitting...');
+    
+    const paragraphs = textToProcess
+      .split(/\n\s*\n/)
+      .map(p => p.trim())
+      .filter(p =>
+        p.length > 80 &&
+        /[א-ת]/.test(p) &&
+        /(נדרש|הסבר|חשב|נמק|פרט|קבע|ציין|דון|\?)/.test(p)
+      );
+
+    console.log('Paragraphs found:', paragraphs.length);
+
+    return paragraphs.map((p, index) => ({
+      number: index + 1,
+      text: p,
+      source: "auto-paragraph"
+    }));
   }
 
+  console.log('=== EXTRACT QUESTIONS DEBUG END ===');
+  console.log('Total questions extracted:', questions.length);
   return questions;
 }
 
