@@ -1,63 +1,20 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle, XCircle, AlertCircle, ChevronLeft, Loader2 } from 'lucide-react';
+import { AlertCircle, ChevronLeft, Loader2, RefreshCw, ChevronRight, BookOpen } from 'lucide-react';
 import { useSessionContext } from '../contexts/SessionContext';
 
-interface AnswerData {
-  question_id: string;
-  hebrew_answer: string;
-  sources_json: any[];
-  status: string;
-  copied: boolean;
-}
-
-type FinalStatus = 'ready' | 'verify' | 'no_source' | 'too_long' | 'not_generated';
-
-function getFinalStatus(a: AnswerData | undefined): FinalStatus {
-  if (!a || a.status === 'error' || a.status === 'loading') return 'not_generated';
-  if (a.status === 'no_source' || !a.sources_json || a.sources_json.length === 0) return 'no_source';
-  const lines = a.hebrew_answer.split('\n').filter(l => l.trim()).length;
-  if (lines > 15) return 'too_long';
-  if (a.status === 'completed' && a.hebrew_answer.length > 20) return 'ready';
-  return 'verify';
-}
-
-const statusConfig: Record<FinalStatus, { label: string; color: string; icon: typeof CheckCircle }> = {
-  ready: { label: 'Prêt pour rédaction', color: 'text-emerald-400', icon: CheckCircle },
-  verify: { label: 'Sources à vérifier', color: 'text-yellow-400', icon: AlertCircle },
-  no_source: { label: 'Source insuffisante', color: 'text-orange-400', icon: AlertCircle },
-  too_long: { label: 'Réponse trop longue', color: 'text-red-400', icon: XCircle },
-  not_generated: { label: 'Non analysé', color: 'text-text-tertiary', icon: XCircle },
-};
-
 export default function VerificationPage() {
-  const { sessionData, finalVerify, correctFinalDocument } = useSessionContext();
-  const [verifying, setVerifying] = useState(false);
+  const { sessionData, correctFinalDocument } = useSessionContext();
   const [correcting, setCorrecting] = useState(false);
   const navigate = useNavigate();
 
   const questions = sessionData?.questions || [];
-  const answers = sessionData?.answers || [];
   const finalChecks = sessionData?.finalChecks || [];
-  const finalDocument = sessionData?.documents?.find((d: any) => d.type === 'final');
-  
-  const answersMap = new Map(answers.map((a: AnswerData) => [a.question_id, a]));
-  
-  const ready = questions.filter(q => getFinalStatus(answersMap.get(q.id)) === 'ready').length;
-  const total = questions.length;
-  const pct = total > 0 ? Math.round((ready / total) * 100) : 0;
-
-  const handleVerify = async () => {
-    setVerifying(true);
-    try {
-      await finalVerify();
-    } catch (err) {
-      console.error('Verification failed:', err);
-    }
-    setVerifying(false);
-  };
+  const lawsDocument = sessionData?.documents?.find((d: any) => d.type === 'laws');
+  const hasLaws = !!lawsDocument;
 
   const handleCorrect = async () => {
+    if (!hasLaws) return;
     setCorrecting(true);
     try {
       await correctFinalDocument();
@@ -67,228 +24,165 @@ export default function VerificationPage() {
     setCorrecting(false);
   };
 
-  return (
-    <div className="min-h-screen px-4 sm:px-6 lg:px-8 py-6 sm:py-10 max-w-3xl mx-auto">
+  const handleRegenerate = async () => {
+    setCorrecting(true);
+    try {
+      await correctFinalDocument();
+    } catch (err) {
+      console.error('Regeneration failed:', err);
+    }
+    setCorrecting(false);
+  };
 
-      {/* Page header */}
-      <div className="mb-8">
-        <div className="inline-flex items-center px-3 py-1.5 rounded-full mb-4 text-[11px] font-semibold uppercase tracking-widest"
-          style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', color: '#fcd34d' }}>
-          Étape 4
-        </div>
-        <h1 className="text-[26px] font-bold text-text-primary tracking-tight mb-1">Vérification de la préparation</h1>
-        <p className="text-[13px] text-text-tertiary">État de la préparation pour chaque question.</p>
-      </div>
-
-      {questions.length === 0 ? (
-        <div className="flex flex-col items-center py-20">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5"
-            style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.15)' }}>
-            <AlertCircle className="w-7 h-7 text-indigo-400" />
+  if (!hasLaws) {
+    return (
+      <div className="min-h-screen px-4 sm:px-6 lg:px-8 py-6 sm:py-10 max-w-3xl mx-auto">
+        <div className="flex flex-col items-center justify-center py-24">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)' }}>
+            <AlertCircle className="w-7 h-7 text-amber-400" />
           </div>
-          <p className="text-[14px] font-semibold text-text-primary mb-1.5">Aucune question trouvée</p>
-          <p className="text-[13px] text-text-tertiary mb-6">Commencez par importer votre exercice.</p>
-          <button onClick={() => navigate('/exercise')}
-            className="px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white"
-            style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow: '0 4px 16px rgba(99,102,241,0.25)' }}>
-            Aller à l'exercice
+          <h2 className="text-[18px] font-semibold text-text-primary mb-2">Lois fiscales non importées</h2>
+          <p className="text-[13px] text-text-tertiary mb-6">Importez d'abord le PDF des lois fiscales pour corriger les réponses.</p>
+          <button onClick={() => navigate('/laws')} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all" style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow: '0 4px 12px rgba(99,102,241,0.25)' }}>
+            <BookOpen className="w-4 h-4" /> Importer les lois fiscales
           </button>
         </div>
-      ) : (
-        <>
-          {/* Score card */}
-          <div className="rounded-2xl p-5 mb-4" style={{ background: 'rgba(24,24,27,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[13px] font-semibold text-text-secondary tracking-tight">Progression globale</p>
-              <p className="text-[26px] font-bold tracking-tight"
-                style={{ color: pct === 100 ? '#34d399' : pct >= 50 ? '#818cf8' : '#fb923c' }}>
-                {pct}%
-              </p>
-            </div>
-            {/* Progress bar */}
-            <div className="h-1.5 rounded-full mb-4 overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
-              <div className="h-full rounded-full transition-all duration-700"
-                style={{
-                  width: `${pct}%`,
-                  background: pct === 100
-                    ? 'linear-gradient(90deg,#10b981,#34d399)'
-                    : pct >= 50
-                    ? 'linear-gradient(90deg,#6366f1,#818cf8)'
-                    : 'linear-gradient(90deg,#f59e0b,#fb923c)',
-                }} />
-            </div>
-            {/* Stats row */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {([
-                { key: 'ready',         label: 'Prêtes',          color: '#34d399', bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.2)' },
-                { key: 'verify',        label: 'À vérifier',      color: '#fbbf24', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
-                { key: 'no_source',     label: 'Sans source',     color: '#fb923c', bg: 'rgba(249,115,22,0.08)', border: 'rgba(249,115,22,0.2)' },
-                { key: 'not_generated', label: 'Non générées',    color: '#71717a', bg: 'rgba(113,113,122,0.08)', border: 'rgba(113,113,122,0.2)' },
-              ] as const).map(s => {
-                const count = questions.filter(q => getFinalStatus(answersMap.get(q.id)) === s.key).length;
-                return (
-                  <div key={s.key} className="rounded-xl p-3 text-center" style={{ background: s.bg, border: `1px solid ${s.border}` }}>
-                    <p className="text-[18px] font-bold tabular-nums" style={{ color: s.color }}>{count}</p>
-                    <p className="text-[10px] text-text-muted mt-0.5 leading-tight">{s.label}</p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+      </div>
+    );
+  }
 
-          {/* Final document correction section */}
-          {finalDocument && (
-            <div className="rounded-2xl p-5 mb-4" style={{ background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.15)' }}>
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="text-[13px] font-semibold text-emerald-400 tracking-tight">Document complété importé</p>
-                  <p className="text-[11px] text-text-muted mt-0.5">{finalDocument.filename}</p>
-                </div>
-                {finalChecks.length > 0 && (
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium"
-                    style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: '#34d399' }}>
-                    <CheckCircle className="w-3.5 h-3.5" /> {finalChecks.length} réponses corrigées
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                {!correcting && finalChecks.length === 0 && (
-                  <button onClick={handleCorrect}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold text-white"
-                    style={{ background: 'linear-gradient(135deg,#10b981,#059669)', boxShadow: '0 4px 16px rgba(16,185,129,0.25)' }}>
-                    Corriger le document
-                  </button>
-                )}
-                {correcting && (
-                  <div className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[12px] font-semibold text-text-tertiary">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Correction...
-                  </div>
-                )}
-                <button onClick={() => navigate('/final-document')}
-                  className="text-[11px] text-text-tertiary hover:text-text-secondary transition-colors">
-                  Réimporter
-                </button>
-              </div>
-            </div>
-          )}
+  return (
+    <div className="min-h-screen px-4 sm:px-6 lg:px-8 py-6 sm:py-10 max-w-4xl mx-auto">
+      {/* Page header */}
+      <div className="mb-10">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full mb-4 text-[11px] font-semibold uppercase tracking-widest" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)', color: '#fcd34d' }}>
+          Étape 5
+        </div>
+        <h1 className="text-[26px] font-bold text-text-primary tracking-tight mb-2">Correction des réponses</h1>
+        <p className="text-[14px] text-text-tertiary leading-relaxed max-w-xl">
+          Les réponses sont corrigées exclusivement depuis le document de lois fiscales importé.
+        </p>
+      </div>
 
-          {/* Question rows */}
-          <div className="space-y-3 mb-6">
-            {questions.map((q) => {
-              const a = answersMap.get(q.id);
-              const finalStatus = getFinalStatus(a);
-              const cfg = statusConfig[finalStatus];
-              const StatusIcon = cfg.icon;
-              const lines = a?.hebrew_answer ? a.hebrew_answer.split('\n').filter(l => l.trim()).length : 0;
-              const within15 = lines <= 15 && lines > 0;
-              const check = finalChecks.find((c: any) => c.question_id === q.id);
-              const score = check?.score || 0;
-
-              return (
-                <div key={q.id} className="rounded-2xl p-4"
-                  style={{ background: 'rgba(24,24,27,0.7)', border: '1px solid rgba(255,255,255,0.06)' }}>
-
-                  {/* Header */}
-                  <div className="flex items-center gap-3 mb-3">
-                    <span className="w-7 h-7 rounded-lg flex items-center justify-center text-[12px] font-bold flex-shrink-0 tabular-nums"
-                      style={{ background: 'rgba(99,102,241,0.14)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.22)' }}>
-                      {q.id}
-                    </span>
-                    <span className="flex-1 text-[12px] text-text-secondary truncate">{q.original_text.substring(0, 60)}{q.original_text.length > 60 ? '…' : ''}</span>
-                    {check ? (
-                      <span className="text-[18px] font-bold tabular-nums px-2 py-1 rounded-lg"
-                        style={{ background: score >= 80 ? 'rgba(16,185,129,0.1)' : score >= 60 ? 'rgba(245,158,11,0.1)' : 'rgba(249,115,22,0.1)', 
-                                 border: score >= 80 ? '1px solid rgba(16,185,129,0.2)' : score >= 60 ? '1px solid rgba(245,158,11,0.2)' : '1px solid rgba(249,115,22,0.2)',
-                                 color: score >= 80 ? '#34d399' : score >= 60 ? '#fbbf24' : '#fb923c' }}>
-                        {Math.round(score)}/100
-                      </span>
-                    ) : (
-                      <span className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-1 rounded-lg flex-shrink-0 ${cfg.color}`}
-                        style={{ background: 'rgba(255,255,255,0.04)' }}>
-                        <StatusIcon className="w-3 h-3" />
-                        {cfg.label}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Score breakdown if verified */}
-                  {check && (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-                      {[
-                        { label: 'Compréhension', score: 15, achieved: score >= 15 },
-                        { label: 'Règle fiscale', score: 20, achieved: score >= 35 },
-                        { label: 'Source pertinente', score: 20, achieved: score >= 55 },
-                        { label: 'Application', score: 20, achieved: score >= 75 },
-                        { label: 'Calcul', score: 10, achieved: score >= 85 },
-                        { label: 'Conclusion', score: 10, achieved: score >= 95 },
-                        { label: '≤15 lignes', score: 5, achieved: within15 },
-                      ].map((item, idx) => (
-                        <div key={idx} className="rounded-lg p-2 text-center"
-                          style={{ background: item.achieved ? 'rgba(16,185,129,0.08)' : 'rgba(39,39,42,0.8)', 
-                                   border: item.achieved ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(255,255,255,0.05)' }}>
-                          <p className="text-[9px] text-text-muted uppercase tracking-wider">{item.label}</p>
-                          <p className="text-[13px] font-bold tabular-nums" style={{ color: item.achieved ? '#34d399' : '#71717a' }}>
-                            {item.score}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Issues */}
-                  {check?.issues_json && check.issues_json.length > 0 && (
-                    <div className="rounded-lg p-2 mb-2" style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.12)' }}>
-                      <p className="text-[10px] font-semibold text-amber-400/80 uppercase tracking-widest mb-1">Problèmes</p>
-                      {check.issues_json.slice(0, 2).map((issue: string, ii: number) => (
-                        <p key={ii} className="text-[11px] text-amber-400/90">• {issue}</p>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Corrections */}
-                  {check?.corrections_json && check.corrections_json.length > 0 && (
-                    <div className="rounded-lg p-2" style={{ background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.14)' }}>
-                      <p className="text-[10px] font-semibold text-indigo-400/80 uppercase tracking-widest mb-1">Suggestions</p>
-                      {check.corrections_json.slice(0, 2).map((correction: string, ii: number) => (
-                        <p key={ii} className="text-[11px] text-indigo-400/90">• {correction}</p>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Footer actions */}
-          <div className="flex items-center justify-between">
-            <button onClick={() => navigate('/answers')}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-medium text-text-tertiary hover:text-text-secondary transition-colors"
-              style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
-              <ChevronLeft className="w-4 h-4" /> Réponses
-            </button>
-            <div className="flex items-center gap-3">
-              {!verifying && (
-                <button onClick={handleVerify}
-                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-semibold text-white"
-                  style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow: '0 4px 16px rgba(99,102,241,0.25)' }}>
-                  Lancer la vérification
-                </button>
-              )}
-              {verifying && (
-                <div className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-semibold text-text-tertiary">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Vérification...
-                </div>
-              )}
-              {pct === 100 && sessionData?.finalChecks && sessionData.finalChecks.length > 0 && (
-                <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold"
-                  style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: '#34d399' }}>
-                  <CheckCircle className="w-4 h-4" /> Vérifié
-                </div>
-              )}
-            </div>
-          </div>
-        </>
+      {/* Correct button */}
+      {!correcting && finalChecks.length === 0 && (
+        <div className="mb-6">
+          <button onClick={handleCorrect} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all" style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow: '0 4px 12px rgba(99,102,241,0.25)' }}>
+            Corriger toutes les réponses
+          </button>
+        </div>
       )}
+
+      {correcting && (
+        <div className="mb-6 flex items-center gap-2 text-[13px] text-text-secondary">
+          <Loader2 className="w-4 h-4 animate-spin" /> Correction en cours...
+        </div>
+      )}
+
+      {finalChecks.length > 0 && (
+        <div className="mb-6">
+          <button onClick={handleRegenerate} className="flex items-center gap-2 px-4 py-2 rounded-xl text-[12px] font-medium transition-all" style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.2)', color: '#a5b4fc' }}>
+            <RefreshCw className="w-3.5 h-3.5" /> Régénérer la correction
+          </button>
+        </div>
+      )}
+
+      {/* Questions list */}
+      <div className="space-y-4">
+        {questions.map((q) => {
+          const check = finalChecks.find((c: any) => c.question_id === q.id);
+          const score = check?.score || 0;
+          const answer = sessionData?.answers?.find((a: any) => a.question_id === q.id);
+          const studentAnswer = answer?.hebrew_answer || '';
+
+          if (!check) {
+            return (
+              <div key={q.id} className="rounded-2xl p-5" style={{ background: 'rgba(24,24,27,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-[15px] font-semibold text-text-secondary">Question {q.id}</h3>
+                  <span className="text-[11px] text-text-muted">Non corrigé</span>
+                </div>
+                <p className="text-[13px] text-text-primary leading-relaxed" dir="rtl">{q.original_text || q.original_hebrew || ''}</p>
+              </div>
+            );
+          }
+
+          return (
+            <div key={q.id} className="rounded-2xl p-5" style={{ background: 'rgba(24,24,27,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}>
+              {/* Header */}
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-[15px] font-semibold text-text-secondary">Question {q.id}</h3>
+                <span className="text-[18px] font-bold tabular-nums px-2 py-1 rounded-lg" style={{ background: score >= 80 ? 'rgba(16,185,129,0.1)' : score >= 60 ? 'rgba(245,158,11,0.1)' : 'rgba(249,115,22,0.1)', border: score >= 80 ? '1px solid rgba(16,185,129,0.2)' : score >= 60 ? '1px solid rgba(245,158,11,0.2)' : '1px solid rgba(249,115,22,0.2)', color: score >= 80 ? '#34d399' : score >= 60 ? '#fbbf24' : '#fb923c' }}>
+                  {Math.round(score)}/100
+                </span>
+              </div>
+
+              {/* Question */}
+              <div className="mb-3">
+                <p className="text-[11px] font-medium text-text-tertiary mb-1">Question:</p>
+                <p className="text-[13px] text-text-primary leading-relaxed" dir="rtl">{q.original_text || q.original_hebrew || ''}</p>
+              </div>
+
+              {/* Student answer */}
+              {studentAnswer && (
+                <div className="mb-3">
+                  <p className="text-[11px] font-medium text-text-tertiary mb-1">Réponse étudiant:</p>
+                  <p className="text-[13px] text-text-secondary leading-relaxed" dir="rtl">{studentAnswer}</p>
+                </div>
+              )}
+
+              {/* AI suggestion */}
+              {answer?.hebrew_answer && (
+                <div className="mb-3">
+                  <p className="text-[11px] font-medium text-text-tertiary mb-1">Suggestion AI:</p>
+                  <p className="text-[13px] text-text-secondary leading-relaxed" dir="rtl">{answer.hebrew_answer}</p>
+                </div>
+              )}
+
+              {/* Correction */}
+              {check.corrections_json && check.corrections_json.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-[11px] font-medium text-text-tertiary mb-1">Correction:</p>
+                  <div className="space-y-1">
+                    {check.corrections_json.slice(0, 3).map((correction: string, i: number) => (
+                      <p key={i} className="text-[12px] text-indigo-400/90">• {correction}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Improvements */}
+              {check.issues_json && check.issues_json.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-[11px] font-medium text-text-tertiary mb-1">Suggestions d'amélioration:</p>
+                  <div className="space-y-1">
+                    {check.issues_json.slice(0, 3).map((issue: string, i: number) => (
+                      <p key={i} className="text-[12px] text-amber-400/90">• {issue}</p>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* CTA */}
+      {finalChecks.length > 0 && (
+        <div className="mt-8 flex justify-end">
+          <button onClick={() => navigate('/final')} className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all" style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', boxShadow: '0 4px 12px rgba(99,102,241,0.25)' }}>
+            Continuer vers Final
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Back button */}
+      <div className="mt-6">
+        <button onClick={() => navigate('/final-document')} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[13px] font-medium text-text-tertiary hover:text-text-secondary transition-colors" style={{ border: '1px solid rgba(255,255,255,0.07)' }}>
+          <ChevronLeft className="w-4 h-4" /> Document final
+        </button>
+      </div>
     </div>
   );
 }
