@@ -196,13 +196,14 @@ router.post('/:sessionId/upload-laws', upload.single('file'), async (req: Reques
       createdAt: new Date().toISOString()
     };
 
-    // Build chunks before saving
+    // Build chunks
     const chunks = buildChunks(text, pages);
     doc.chunksCount = chunks.length;
     
+    // Store chunks in database
     await saveDocumentToSession(doc);
 
-    // Save chunks
+    // Save chunks to database
     for (let i = 0; i < chunks.length; i++) {
       await saveDocumentChunkToSession({
         id: uuidv4(),
@@ -210,11 +211,16 @@ router.post('/:sessionId/upload-laws', upload.single('file'), async (req: Reques
         documentId: doc.id,
         chunkIndex: i,
         text: chunks[i].text,
-        pageNumber: (chunks[i] as any).pageNumber || null,
-        metadata: (chunks[i] as any).metadata || {},
+        page: chunks[i].page || undefined,
+        startChar: chunks[i].startChar,
+        endChar: chunks[i].endChar,
         createdAt: new Date().toISOString()
       });
     }
+
+    // Store chunks in memory for RAG service
+    const { storeLawsChunks } = await import('../services/ragService.js');
+    storeLawsChunks(chunks, file.originalname, pages);
 
     res.json({
       ...doc,
@@ -222,6 +228,7 @@ router.post('/:sessionId/upload-laws', upload.single('file'), async (req: Reques
       chunks: chunks.length
     });
   } catch (error) {
+    console.error('Error uploading laws:', error);
     res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de l\'upload du document de lois' });
   }
 });
