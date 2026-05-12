@@ -212,18 +212,21 @@ function initSQLite(db: Database.Database) {
 }
 
 async function initPostgreSQL(pool: Pool) {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS documents (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      type TEXT NOT NULL,
-      pages INTEGER,
-      content TEXT NOT NULL,
-      uploaded_at TEXT NOT NULL,
-      is_exercise BOOLEAN DEFAULT FALSE,
-      is_laws BOOLEAN DEFAULT FALSE
-    )
-  `);
+  // Drop legacy tables that conflict with new schema
+  // (old schema without session_id was blocking the new one due to IF NOT EXISTS)
+  try {
+    const result = await pool.query(`
+      SELECT column_name FROM information_schema.columns 
+      WHERE table_name = 'documents' AND column_name = 'session_id'
+    `);
+    if (result.rows.length === 0) {
+      console.log('⚠️  Legacy documents table detected (missing session_id), dropping...');
+      await pool.query('DROP TABLE IF EXISTS documents CASCADE');
+      console.log('✅ Legacy documents table dropped, will be recreated with correct schema');
+    }
+  } catch (err) {
+    console.log('ℹ️  documents table check failed:', err);
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS generated_answers (
