@@ -1,16 +1,19 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import documentsRouter from './routes/documents.js';
 import sessionsRouter from './routes/sessions.js';
 import { ensureUploadDir } from './services/documentService.js';
 import { initializeOpenAI } from './services/aiService.js';
 dotenv.config();
+// Force migration to run on next startup
+console.log('Backend starting - migration will run automatically on PostgreSQL connection');
 const app = express();
 const PORT = Number(process.env.PORT) || 5051;
 // CORS configuration - support Vercel frontend and preview deployments
 const allowedOrigins = [
     'https://taxe-lake.vercel.app',
+    'https://taxe-self.vercel.app',
+    'https://taxe-one.vercel.app',
     'http://localhost:5173',
     'http://localhost:5174'
 ].concat(process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) || []);
@@ -20,10 +23,12 @@ app.use(cors({
         if (!origin)
             return callback(null, true);
         if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+            console.log(`✅ CORS allowed: ${origin}`);
             callback(null, true);
         }
         else {
-            callback(null, true); // For now, allow all origins - can restrict in production
+            console.warn(`❌ CORS blocked origin: ${origin}`);
+            callback(new Error('Origin not allowed by CORS'));
         }
     },
     credentials: true,
@@ -32,7 +37,6 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
-app.use('/api', documentsRouter);
 app.use('/api/sessions', sessionsRouter);
 app.get('/health', (_req, res) => {
     res.json({ status: 'ok', port: PORT, timestamp: new Date().toISOString() });

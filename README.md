@@ -99,7 +99,7 @@ cp .env.example .env
 Éditez `backend/.env` si nécessaire :
 
 ```env
-PORT=5050
+PORT=5051
 OPENAI_API_KEY=  # Laissez vide pour le mode sans IA
 ```
 
@@ -113,7 +113,7 @@ cp .env.example .env
 Éditez `frontend/.env` si nécessaire :
 
 ```env
-VITE_API_URL=http://localhost:5050
+VITE_API_URL=http://localhost:5051
 ```
 
 **Note** : Si aucune clé API n'est fournie, l'application fonctionnera en mode local sans IA.
@@ -139,7 +139,7 @@ cd backend
 npm run dev
 ```
 
-Le backend sera accessible sur `http://localhost:5050`
+Le backend sera accessible sur `http://localhost:5051`
 
 Frontend :
 
@@ -156,7 +156,7 @@ Si vous obtenez l'erreur "EADDRINUSE: address already in use" :
 
 ```bash
 # Identifier le processus
-lsof -i :5050
+lsof -i :5051
 
 # Tuer le processus (remplacez PID par l'ID du processus)
 kill -9 PID
@@ -164,12 +164,12 @@ kill -9 PID
 # Ou changer le PORT dans backend/.env
 ```
 
-**Si le port 5050 est aussi occupé** :
+**Si le port 5051 est aussi occupé** :
 
 Vous pouvez utiliser un autre port. Modifiez les fichiers suivants avec le même port :
 
-1. `backend/.env` : Changez `PORT=5050` en `PORT=5001` (ou autre)
-2. `frontend/.env` : Changez `VITE_API_URL=http://localhost:5050` en `VITE_API_URL=http://localhost:5001` (ou même port que backend)
+1. `backend/.env` : Changez `PORT=5051` en `PORT=5001` (ou autre)
+2. `frontend/.env` : Changez `VITE_API_URL=http://localhost:5051` en `VITE_API_URL=http://localhost:5001` (ou même port que backend)
 
 ## 📁 Structure du projet
 

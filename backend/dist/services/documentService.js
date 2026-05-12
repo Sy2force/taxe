@@ -3,7 +3,7 @@ import mammoth from 'mammoth';
 import fs from 'fs/promises';
 import path from 'path';
 import { spawn } from 'child_process';
-import { searchConcepts } from './taxKnowledgeBase.js';
+// import { searchConcepts, type TaxConcept } from './taxKnowledgeBase.js'; // Moved to legacy
 const documents = new Map();
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 export async function ensureUploadDir() {
@@ -315,14 +315,7 @@ export function clearAllDocuments() {
 }
 export function searchInDocuments(query) {
     const results = [];
-    const keywords = query.toLowerCase().split(/\s+/);
-    // Search for related tax concepts
-    const relatedConcepts = searchConcepts(query);
-    const conceptKeywords = new Set();
-    relatedConcepts.forEach(concept => {
-        concept.motsClesFrancais.forEach(kw => conceptKeywords.add(kw.toLowerCase()));
-        concept.motsClesHebreu.forEach(kw => conceptKeywords.add(kw.toLowerCase()));
-    });
+    const keywords = query.toLowerCase().split(' ');
     // Search through ALL documents and ALL lines to ensure full document coverage
     for (const [docId, doc] of documents) {
         const text = doc.content.toLowerCase();
@@ -333,18 +326,11 @@ export function searchInDocuments(query) {
             const lineLower = line.toLowerCase();
             let matchScore = 0;
             const matchedKeywords = [];
-            // Check original query keywords
+            // Check for keyword matches
             for (const keyword of keywords) {
                 if (lineLower.includes(keyword)) {
                     matchScore += 1.5; // Higher weight for direct query matches
                     matchedKeywords.push(keyword);
-                }
-            }
-            // Check concept-related keywords
-            for (const conceptKeyword of conceptKeywords) {
-                if (lineLower.includes(conceptKeyword) && !matchedKeywords.includes(conceptKeyword)) {
-                    matchScore += 1; // Lower weight for concept matches
-                    matchedKeywords.push(conceptKeyword);
                 }
             }
             if (matchScore > 0) {
@@ -358,25 +344,15 @@ export function searchInDocuments(query) {
                         reasonForRelevance += '...';
                     }
                 }
-                if (relatedConcepts.length > 0) {
-                    const conceptNames = relatedConcepts.slice(0, 2).map(c => c.nomFrancais).join(', ');
-                    if (reasonForRelevance) {
-                        reasonForRelevance += `. Concepts liés: ${conceptNames}`;
-                    }
-                    else {
-                        reasonForRelevance = `Concepts liés: ${conceptNames}`;
-                    }
-                }
                 results.push({
                     keyword: query,
                     extract: lines[i],
                     beforeContext,
                     afterContext,
-                    relevanceScore: matchScore / (keywords.length + conceptKeywords.size),
+                    relevanceScore: matchScore / keywords.length,
                     documentId: docId,
                     documentName: doc.name,
                     page: doc.type === 'pdf' ? estimatePage(i, lines.length, doc.pages) : undefined,
-                    matchedConcepts: relatedConcepts.length > 0 ? relatedConcepts.slice(0, 2) : undefined,
                     reasonForRelevance
                 });
             }
