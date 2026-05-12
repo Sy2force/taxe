@@ -204,6 +204,64 @@ router.post('/:sessionId/upload-exercise', upload.single('file'), async (req: Re
     
     console.log("[UPLOAD_EXERCISE] questions detected:", questions.length);
     
+    // Auto-trigger smart split if less than 8 questions detected
+    const expectedQuestions = 8;
+    if (questions.length < expectedQuestions) {
+      console.log(`[UPLOAD_EXERCISE] Only ${questions.length} questions detected, auto-triggering smart split into ${expectedQuestions}`);
+      const smartQuestions = smartSplitIntoQuestions(text, expectedQuestions);
+      console.log(`[UPLOAD_EXERCISE] Smart split created ${smartQuestions.length} questions`);
+      
+      // Use smart split questions instead
+      const enhancedQuestions: Array<{ number: number; text: string; cleanedHebrew: string; frenchTranslation: string; frenchUnderstanding: string; source: string }> = 
+        smartQuestions.map(q => ({ 
+          ...q, 
+          cleanedHebrew: cleanHebrewQuestion(q.text), 
+          frenchTranslation: 'Traduction française indisponible pour le moment.',
+          frenchUnderstanding: '',
+          source: 'smart-split'
+        }));
+      
+      console.log("[UPLOAD_EXERCISE] saving questions...");
+      console.time("[UPLOAD_EXERCISE] save-questions");
+      await Promise.race([
+        Promise.all(enhancedQuestions.map(q =>
+          saveQuestionToSession({
+            id: uuidv4(),
+            sessionId,
+            number: q.number,
+            orderIndex: q.number,
+            originalText: q.text,
+            originalHebrew: q.text,
+            cleanedHebrew: q.cleanedHebrew,
+            frenchTranslation: q.frenchTranslation,
+            frenchUnderstanding: q.frenchUnderstanding,
+            source: q.source,
+            language: 'hebrew',
+            status: 'pending',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          })
+        )),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("DB_SAVE_TIMEOUT")), 15000))
+      ]);
+      console.timeEnd("[UPLOAD_EXERCISE] save-questions");
+
+      console.timeEnd("[UPLOAD_EXERCISE] total");
+      console.log("[UPLOAD_EXERCISE] complete with smart split:", {
+        questionsCount: enhancedQuestions.length,
+        docId: doc.id
+      });
+
+      res.json({
+        ...doc,
+        extracted_text: text,
+        chars: text.length,
+        questionsDetected: enhancedQuestions.length,
+        autoSplit: true
+      });
+      return;
+    }
+    
     if (questions.length === 0) {
       console.warn("[UPLOAD_EXERCISE] WARNING: No questions detected");
       console.timeEnd("[UPLOAD_EXERCISE] total");
@@ -216,12 +274,13 @@ router.post('/:sessionId/upload-exercise', upload.single('file'), async (req: Re
     }
 
     // Prepare questions without blocking on OpenAI translation
-    const enhancedQuestions: Array<{ number: number; text: string; cleanedHebrew: string; frenchTranslation: string; frenchUnderstanding: string }> = 
+    const enhancedQuestions: Array<{ number: number; text: string; cleanedHebrew: string; frenchTranslation: string; frenchUnderstanding: string; source: string }> = 
       questions.map(q => ({ 
         ...q, 
-        cleanedHebrew: q.text, 
-        frenchTranslation: 'Traduction en cours...', 
-        frenchUnderstanding: '' 
+        cleanedHebrew: cleanHebrewQuestion(q.text), 
+        frenchTranslation: 'Traduction française indisponible pour le moment.',
+        frenchUnderstanding: '',
+        source: q.source || 'auto-marker'
       }));
     
     console.log("[UPLOAD_EXERCISE] saving questions...");
@@ -232,10 +291,13 @@ router.post('/:sessionId/upload-exercise', upload.single('file'), async (req: Re
           id: uuidv4(),
           sessionId,
           number: q.number,
+          orderIndex: q.number,
           originalText: q.text,
+          originalHebrew: q.text,
           cleanedHebrew: q.cleanedHebrew,
           frenchTranslation: q.frenchTranslation,
           frenchUnderstanding: q.frenchUnderstanding,
+          source: q.source,
           language: 'hebrew',
           status: 'pending',
           createdAt: new Date().toISOString(),
@@ -292,6 +354,8 @@ router.post('/:sessionId/questions/split-smart', async (req: Request, res: Respo
     const { sessionId } = req.params;
     const { expectedCount = 8 } = req.body;
     
+    console.log('[SPLIT_SMART] Starting with expectedCount:', expectedCount);
+    
     const session = await getSession(sessionId);
     if (!session) {
       return res.status(404).json({ error: 'Session non trouvée' });
@@ -308,33 +372,51 @@ router.post('/:sessionId/questions/split-smart', async (req: Request, res: Respo
       return res.status(400).json({ error: 'Aucun texte extrait' });
     }
 
+    console.log('[SPLIT_SMART] Text length:', text.length);
+
     // Smart split into expectedCount questions
     const questions = smartSplitIntoQuestions(text, expectedCount);
+    console.log('[SPLIT_SMART] Questions split:', questions.length);
 
     // Clear existing questions
     await deleteQuestionsBySession(sessionId);
 
-    // Save new questions in parallel for speed
-    await Promise.all(questions.map(q =>
-      saveQuestionToSession({
-        id: uuidv4(),
+    // Save new questions in parallel for speed with proper fields
+    const questionIds = questions.map(() => uuidv4());
+    await Promise.all(questions.map((q, i) => {
+      const cleaned = cleanHebrewQuestion(q.text);
+      return saveQuestionToSession({
+        id: questionIds[i],
         sessionId,
         number: q.number,
+        orderIndex: q.number,
         originalText: q.text,
-        cleanedHebrew: q.text,
+        originalHebrew: q.text,
+        cleanedHebrew: cleaned,
+        frenchTranslation: 'Traduction française indisponible pour le moment.',
         frenchUnderstanding: '',
+        source: 'smart-split',
         language: 'hebrew',
         status: 'pending',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
-      })
-    ));
+      });
+    }));
 
     await refreshSessionData(sessionId);
 
+    console.log('[SPLIT_SMART] Saved questions:', questions.length);
+
     res.json({
       success: true,
-      questionsCount: questions.length
+      questionsCount: questions.length,
+      questions: questions.map((q, i) => ({
+        id: questionIds[i],
+        orderIndex: q.number,
+        originalHebrew: q.text,
+        cleanedHebrew: cleanHebrewQuestion(q.text),
+        frenchTranslation: 'Traduction française indisponible pour le moment.'
+      }))
     });
   } catch (error) {
     console.error("POST /api/sessions/:sessionId/questions/split-smart failed:", error);
@@ -1312,12 +1394,13 @@ function extractQuestionsFromText(text: string): Array<{ number: number; text: s
 
 function splitByQuestionMarkers(text: string): Array<{ number: number; text: string; source: string }> {
   // Comprehensive marker regex for Hebrew question indicators
-  const markerRegex = /(?:^|\n)\s*(?:שאלה\s*(?:מספר)?\s*(?:\d+|[א-ת][׳']?)|(?:\d+)[.)]|[א-ת][.)]|סעיף\s*[א-ת]|חלק\s*[א-ת])/g;
+  const markerRegex = /(?:^|\n)\s*(?:שאלה\s*(?:מספר)?\s*(?:\d+|[א-ת][׳']?)|(?:\d+)[.)\s]|[\u05D0-\u05EA][.)\s]|סעיף\s*[\u05D0-\u05EA]|חלק\s*[\u05D0-\u05EA])/g;
   
   const matches = [...text.matchAll(markerRegex)];
-  console.log('Marker matches found:', matches.length);
+  console.log('[SPLIT_MARKERS] Marker matches found:', matches.length);
   
   if (matches.length < 2) {
+    console.log('[SPLIT_MARKERS] Not enough markers, returning empty');
     return [];
   }
   
@@ -1332,10 +1415,10 @@ function splitByQuestionMarkers(text: string): Array<{ number: number; text: str
     
     let block = text.slice(start, end).trim();
     
-    // Filter valid questions
-    if (block.length > 50 && /[א-ת]/.test(block)) {
+    // Filter valid questions - reduce minimum length to catch shorter questions
+    if (block.length > 30 && /[\u05D0-\u05EA]/.test(block)) {
       // Remove the marker from the block text
-      const cleanBlock = block.replace(/^(?:שאלה\s*(?:מספר)?\s*(?:\d+|[א-ת][׳']?)|(?:\d+)[.)]|[א-ת][.)]|סעיף\s*[א-ת]|חלק\s*[א-ת])/, '').trim();
+      const cleanBlock = block.replace(/^(?:שאלה\s*(?:מספר)?\s*(?:\d+|[\u05D0-\u05EA][׳']?)|(?:\d+)[.)\s]|[\u05D0-\u05EA][.)\s]|סעיף\s*[\u05D0-\u05EA]|חלק\s*[\u05D0-\u05EA])/, '').trim();
       
       questions.push({
         number: questions.length + 1,
@@ -1345,23 +1428,27 @@ function splitByQuestionMarkers(text: string): Array<{ number: number; text: str
     }
   }
   
+  console.log('[SPLIT_MARKERS] Questions extracted:', questions.length);
   return questions;
 }
 
 function splitByInstructionParagraphs(text: string): Array<{ number: number; text: string; source: string }> {
   const instructionKeywords = [
     'נדרש', 'הסבר', 'חשב', 'נמק', 'פרט', 'קבע', 'ציין', 'דון', 
-    'נדרשת', 'הסבירו', 'חשבו', 'נמקו', 'קבעו', 'פרטו', 'ציינו'
+    'נדרשת', 'הסבירו', 'חשבו', 'נמקו', 'קבעו', 'פרטו', 'ציינו',
+    'מה', 'למה', 'כיצד', 'איך', 'באיזו', 'מתי', 'האם'
   ];
   
   const paragraphs = text
     .split(/\n\s*\n/)
     .map(p => p.trim())
     .filter(p =>
-      p.length > 50 &&
-      /[א-ת]/.test(p) &&
+      p.length > 30 &&
+      /[\u05D0-\u05EA]/.test(p) &&
       instructionKeywords.some(keyword => p.includes(keyword))
     );
+  
+  console.log('[SPLIT_PARAGRAPHS] Paragraphs with keywords:', paragraphs.length);
   
   return paragraphs.map((p, index) => ({
     number: index + 1,
@@ -1370,12 +1457,37 @@ function splitByInstructionParagraphs(text: string): Array<{ number: number; tex
   }));
 }
 
+function cleanHebrewQuestion(text: string): string {
+  // Remove PDF artifacts and clean up Hebrew text
+  let cleaned = text
+    // Remove multiple spaces
+    .replace(/\s+/g, ' ')
+    // Remove leading/trailing whitespace
+    .trim()
+    // Remove common PDF artifacts
+    .replace(/[\u200B-\u200D\uFEFF]/g, '') // Zero-width characters
+    .replace(/[^\u05D0-\u05EA\u0591-\u05F4\s\d\u0022-\u002F\u003A-\u0040\u005B-\u0060\u007B-\u007E\u05BE\u05C0\u05C3\u05C6\u05F0-\u05F4]/g, '') // Keep Hebrew, spaces, numbers, basic punctuation
+    // Fix common OCR issues
+    .replace(/׳/g, "'")
+    .replace(/״/g, '"')
+    // Remove page numbers at start of lines
+    .replace(/^\d+\s*$/gm, '')
+    // Remove empty lines
+    .replace(/\n\s*\n/g, '\n')
+    .trim();
+  
+  return cleaned;
+}
+
 function smartSplitIntoQuestions(text: string, expectedCount: number): Array<{ number: number; text: string }> {
+  console.log('[SMART_SPLIT] Starting split with expectedCount:', expectedCount);
+  
   const instructionKeywords = [
     'נדרש', 'הסבר', 'חשב', 'נמק', 'פרט', 'קבע', 'ציין', 'דון', 
-    'נדרשת', 'הסבירו', 'חשבו', 'נמקו', 'קבעו', 'פרטו', 'ציינו'
+    'נדרשת', 'הסבירו', 'חשבו', 'נמקו', 'קבעו', 'פרטו', 'ציינו',
+    'מה', 'למה', 'כיצד', 'איך', 'באיזו', 'מתי', 'האם'
   ];
-
+  
   // Find all instruction keyword positions
   const keywordPositions: Array<{ index: number; keyword: string }> = [];
   instructionKeywords.forEach(keyword => {
@@ -1388,6 +1500,7 @@ function smartSplitIntoQuestions(text: string, expectedCount: number): Array<{ n
 
   // Sort by position
   keywordPositions.sort((a, b) => a.index - b.index);
+  console.log('[SMART_SPLIT] Keyword positions found:', keywordPositions.length);
 
   // If we have enough keyword positions, use them as split points
   if (keywordPositions.length >= expectedCount) {
@@ -1397,17 +1510,21 @@ function smartSplitIntoQuestions(text: string, expectedCount: number): Array<{ n
       const end = i < expectedCount - 1 ? keywordPositions[i + 1].index : text.length;
       let block = text.slice(start, end).trim();
       
-      if (block.length > 50 && /[א-ת]/.test(block)) {
+      if (block.length > 30 && /[\u05D0-\u05EA]/.test(block)) {
         questions.push({
           number: i + 1,
           text: block
         });
       }
     }
-    return questions;
+    console.log('[SMART_SPLIT] Questions from keywords:', questions.length);
+    if (questions.length === expectedCount) {
+      return questions;
+    }
   }
 
   // Fallback: split text into equal parts based on expectedCount
+  console.log('[SMART_SPLIT] Using equal split fallback');
   const partLength = Math.floor(text.length / expectedCount);
   const questions: Array<{ number: number; text: string }> = [];
   
@@ -1424,12 +1541,29 @@ function smartSplitIntoQuestions(text: string, expectedCount: number): Array<{ n
       }
     }
     
-    if (block.length > 50 && /[א-ת]/.test(block)) {
+    // Always add the question even if it's short - we need exactly expectedCount
+    if (block.length > 10 && /[\u05D0-\u05EA]/.test(block)) {
+      questions.push({
+        number: i + 1,
+        text: block
+      });
+    } else if (block.length > 10) {
+      // Add even if no Hebrew, to ensure we have expectedCount
       questions.push({
         number: i + 1,
         text: block
       });
     }
+  }
+  
+  console.log('[SMART_SPLIT] Final questions count:', questions.length);
+  
+  // If we still don't have enough, pad with empty questions
+  while (questions.length < expectedCount) {
+    questions.push({
+      number: questions.length + 1,
+      text: `Question ${questions.length + 1} - texte non détecté`
+    });
   }
   
   return questions;

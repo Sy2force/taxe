@@ -209,6 +209,32 @@ function initSQLite(db: Database.Database) {
   } catch (error) {
     console.log('ℹ️  french_translation column already exists (SQLite)');
   }
+
+  // Migration: Add order_index column if it doesn't exist
+  try {
+    const columns = db.prepare("PRAGMA table_info(questions)").all() as any[];
+    const hasOrderIndex = columns.some((col: any) => col.name === 'order_index');
+    
+    if (!hasOrderIndex) {
+      db.exec('ALTER TABLE questions ADD COLUMN order_index INTEGER DEFAULT 0');
+      console.log('✅ Migration: order_index column added to questions table (SQLite)');
+    }
+  } catch (error) {
+    console.log('ℹ️  order_index column already exists (SQLite)');
+  }
+
+  // Migration: Add source column if it doesn't exist
+  try {
+    const columns = db.prepare("PRAGMA table_info(questions)").all() as any[];
+    const hasSource = columns.some((col: any) => col.name === 'source');
+    
+    if (!hasSource) {
+      db.exec('ALTER TABLE questions ADD COLUMN source TEXT DEFAULT "auto"');
+      console.log('✅ Migration: source column added to questions table (SQLite)');
+    }
+  } catch (error) {
+    console.log('ℹ️  source column already exists (SQLite)');
+  }
 }
 
 async function initPostgreSQL(pool: Pool) {
@@ -358,6 +384,42 @@ async function initPostgreSQL(pool: Pool) {
     console.log('✅ Migration: french_understanding column added to questions table');
   } catch (error) {
     console.log('ℹ️  french_understanding column already exists or migration not needed');
+  }
+
+  // Migration: Add order_index column if it doesn't exist
+  try {
+    await pool.query(`
+      DO $$
+      BEGIN
+          IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns 
+              WHERE table_name = 'questions' AND column_name = 'order_index'
+          ) THEN
+              ALTER TABLE questions ADD COLUMN order_index INTEGER DEFAULT 0;
+          END IF;
+      END $$
+    `);
+    console.log('✅ Migration: order_index column added to questions table');
+  } catch (error) {
+    console.log('ℹ️  order_index column already exists or migration not needed');
+  }
+
+  // Migration: Add source column if it doesn't exist
+  try {
+    await pool.query(`
+      DO $$
+      BEGIN
+          IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns 
+              WHERE table_name = 'questions' AND column_name = 'source'
+          ) THEN
+              ALTER TABLE questions ADD COLUMN source TEXT DEFAULT 'auto';
+          END IF;
+      END $$
+    `);
+    console.log('✅ Migration: source column added to questions table');
+  } catch (error) {
+    console.log('ℹ️  source column already exists or migration not needed');
   }
 
   // Migration: Add french_translation column if it doesn't exist
@@ -664,8 +726,8 @@ export async function saveQuestionToSession(question: any) {
     const client = await pool.connect();
     try {
       await client.query(
-        'INSERT INTO questions (id, session_id, number, original_text, cleaned_hebrew, french_understanding, language, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
-        [question.id, question.sessionId, question.number, question.originalText, question.cleanedHebrew || '', question.frenchUnderstanding || '', question.language, question.status, question.createdAt, question.updatedAt]
+        'INSERT INTO questions (id, session_id, number, order_index, original_text, original_hebrew, cleaned_hebrew, french_translation, french_understanding, source, language, status, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)',
+        [question.id, question.sessionId, question.number, question.orderIndex || question.number, question.originalText, question.originalHebrew || question.originalText, question.cleanedHebrew || '', question.frenchTranslation || '', question.frenchUnderstanding || '', question.source || 'auto', question.language, question.status, question.createdAt, question.updatedAt]
       );
     } finally {
       client.release();
@@ -673,10 +735,10 @@ export async function saveQuestionToSession(question: any) {
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare(`
-      INSERT INTO questions (id, session_id, number, original_text, cleaned_hebrew, french_understanding, language, status, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO questions (id, session_id, number, order_index, original_text, original_hebrew, cleaned_hebrew, french_translation, french_understanding, source, language, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    stmt.run(question.id, question.sessionId, question.number, question.originalText, question.cleanedHebrew || '', question.frenchUnderstanding || '', question.language, question.status, question.createdAt, question.updatedAt);
+    stmt.run(question.id, question.sessionId, question.number, question.orderIndex || question.number, question.originalText, question.originalHebrew || question.originalText, question.cleanedHebrew || '', question.frenchTranslation || '', question.frenchUnderstanding || '', question.source || 'auto', question.language, question.status, question.createdAt, question.updatedAt);
   }
 }
 

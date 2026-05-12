@@ -251,13 +251,13 @@ export default function ExercisePage() {
       const data = await response.json();
       await refreshSession();
       
-      // Update UI with new questions
-      if (data.questions) {
+      // Update UI with new questions from backend response
+      if (data.questions && Array.isArray(data.questions)) {
         const detected = data.questions.map((q: any, i: number) => ({
           id: i + 1,
-          originalHebrew: q.text,
-          cleanedHebrew: q.text,
-          frenchTranslation: '',
+          originalHebrew: q.originalHebrew || q.text || '',
+          cleanedHebrew: q.cleanedHebrew || q.text || '',
+          frenchTranslation: q.frenchTranslation || 'Traduction française indisponible pour le moment.',
           frenchUnderstanding: '',
           points: '',
           answerLimitLines: 15,
