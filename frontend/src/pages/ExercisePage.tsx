@@ -36,6 +36,7 @@ export default function ExercisePage() {
   const [manualText, setManualText] = useState('');
   const [showManualMode, setShowManualMode] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const uploadAbortRef = useRef<AbortController | null>(null);
   const navigate = useNavigate();
 
   // Warm up backend on mount (avoid cold start delay on Render free tier)
@@ -79,6 +80,10 @@ export default function ExercisePage() {
       fileType: f.type
     });
     
+    // Create AbortController for manual cancel
+    const abortController = new AbortController();
+    uploadAbortRef.current = abortController;
+    
     setUploading(true);
     setUploadProgress('Import du fichier...');
     setStatus('idle');
@@ -94,7 +99,7 @@ export default function ExercisePage() {
     try {
       setUploadProgress('Extraction du texte...');
       // Use SessionContext to upload to backend (ensureSession is called internally)
-      const uploadData = await uploadExercise(f);
+      const uploadData = await uploadExercise(f, abortController.signal);
       
       clearTimeout(slowWarning);
       console.log('HANDLE_UPLOAD_SUCCESS', uploadData);
@@ -132,6 +137,7 @@ export default function ExercisePage() {
       clearTimeout(slowWarning);
       setUploading(false);
       setUploadProgress('');
+      uploadAbortRef.current = null;
     }
   };
 
@@ -347,6 +353,15 @@ export default function ExercisePage() {
               </div>
               <p className="text-[14px] font-medium text-text-secondary">{uploadProgress || 'Analyse du document…'}</p>
               <p className="text-[12px] text-text-muted">Veuillez patienter</p>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  uploadAbortRef.current?.abort();
+                }}
+                className="mt-2 text-[12px] px-3 py-1.5 rounded-lg transition-colors"
+                style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5' }}>
+                Annuler
+              </button>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-3">

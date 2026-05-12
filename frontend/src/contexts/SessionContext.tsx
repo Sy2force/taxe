@@ -47,7 +47,7 @@ interface SessionContextType {
   copySpectatorLink: () => void;
   getProgress: () => Promise<ProgressData | null>;
   ensureSession: () => Promise<string>;
-  uploadExercise: (file: File) => Promise<any>;
+  uploadExercise: (file: File, externalSignal?: AbortSignal) => Promise<any>;
   syncExercise: (data: { extractedText: string; questions: any[] }) => Promise<void>;
   uploadLaws: (file: File) => Promise<void>;
   syncLaws: (data: { extractedText: string; chunks: any[]; pageCount: number }) => Promise<void>;
@@ -390,9 +390,16 @@ export function SessionProvider({ children }: SessionProviderProps) {
     }
   };
 
-  const uploadExercise = async (file: File) => {
+  const uploadExercise = async (file: File, externalSignal?: AbortSignal) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 90000); // 90 seconds timeout
+    
+    // Forward external abort to internal controller
+    const onExternalAbort = () => controller.abort();
+    if (externalSignal) {
+      if (externalSignal.aborted) controller.abort();
+      else externalSignal.addEventListener('abort', onExternalAbort);
+    }
     
     try {
       const validSessionId = await ensureSession(controller.signal);
@@ -425,9 +432,13 @@ export function SessionProvider({ children }: SessionProviderProps) {
       return data;
     } catch (err) {
       clearTimeout(timeout);
+      if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
       console.error('Upload exercise error:', err);
       
       if (err instanceof Error && err.name === 'AbortError') {
+        if (externalSignal?.aborted) {
+          throw new Error('Upload annulé.');
+        }
         throw new Error('L\'analyse prend trop longtemps. Le PDF est peut-être lourd ou scanné. Réessayez ou utilisez le découpage manuel.');
       }
       
