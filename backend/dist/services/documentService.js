@@ -1,9 +1,11 @@
-import pdf from 'pdf-parse';
+import { createRequire } from 'module';
 import mammoth from 'mammoth';
 import fs from 'fs/promises';
 import path from 'path';
 import { spawn } from 'child_process';
 // import { searchConcepts, type TaxConcept } from './taxKnowledgeBase.js'; // Moved to legacy
+const require = createRequire(import.meta.url);
+const pdf = require('pdf-parse');
 const documents = new Map();
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads');
 export async function ensureUploadDir() {
