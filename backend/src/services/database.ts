@@ -111,13 +111,13 @@ function initSQLite(db: Database.Database) {
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
       question_id TEXT NOT NULL,
-      hebrew_answer TEXT,
-      french_explanation TEXT,
-      reasoning TEXT,
-      sources_json TEXT,
-      line_count INTEGER,
+      suggested_answer TEXT,
+      user_answer TEXT,
+      reasoning_fr TEXT,
+      confidence INTEGER DEFAULT 0,
       status TEXT DEFAULT 'pending',
-      copied INTEGER DEFAULT 0,
+      sources_json TEXT,
+      keywords_json TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT,
       FOREIGN KEY (session_id) REFERENCES sessions(id),
@@ -445,19 +445,105 @@ async function initPostgreSQL(pool: Pool) {
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
       question_id TEXT NOT NULL,
-      hebrew_answer TEXT,
-      french_explanation TEXT,
-      reasoning TEXT,
-      sources_json JSONB,
-      line_count INTEGER,
+      suggested_answer TEXT,
+      user_answer TEXT,
+      reasoning_fr TEXT,
+      confidence INTEGER DEFAULT 0,
       status TEXT DEFAULT 'pending',
-      copied BOOLEAN DEFAULT FALSE,
+      sources_json JSONB,
+      keywords_json JSONB,
       created_at TEXT NOT NULL,
       updated_at TEXT,
       FOREIGN KEY (session_id) REFERENCES sessions(id),
       FOREIGN KEY (question_id) REFERENCES questions(id)
     )
   `);
+
+  // Migration: Add RAG columns if they don't exist (for existing tables)
+  try {
+    await pool.query(`
+      DO $$
+      BEGIN
+          IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns 
+              WHERE table_name = 'answers' AND column_name = 'suggested_answer'
+          ) THEN
+              ALTER TABLE answers ADD COLUMN suggested_answer TEXT;
+          END IF;
+      END $$
+    `);
+    console.log('✅ Migration: suggested_answer column added to answers table');
+  } catch (error) {
+    console.log('ℹ️  suggested_answer column already exists or migration not needed');
+  }
+
+  try {
+    await pool.query(`
+      DO $$
+      BEGIN
+          IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns 
+              WHERE table_name = 'answers' AND column_name = 'user_answer'
+          ) THEN
+              ALTER TABLE answers ADD COLUMN user_answer TEXT;
+          END IF;
+      END $$
+    `);
+    console.log('✅ Migration: user_answer column added to answers table');
+  } catch (error) {
+    console.log('ℹ️  user_answer column already exists or migration not needed');
+  }
+
+  try {
+    await pool.query(`
+      DO $$
+      BEGIN
+          IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns 
+              WHERE table_name = 'answers' AND column_name = 'reasoning_fr'
+          ) THEN
+              ALTER TABLE answers ADD COLUMN reasoning_fr TEXT;
+          END IF;
+      END $$
+    `);
+    console.log('✅ Migration: reasoning_fr column added to answers table');
+  } catch (error) {
+    console.log('ℹ️  reasoning_fr column already exists or migration not needed');
+  }
+
+  try {
+    await pool.query(`
+      DO $$
+      BEGIN
+          IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns 
+              WHERE table_name = 'answers' AND column_name = 'confidence'
+          ) THEN
+              ALTER TABLE answers ADD COLUMN confidence INTEGER DEFAULT 0;
+          END IF;
+      END $$
+    `);
+    console.log('✅ Migration: confidence column added to answers table');
+  } catch (error) {
+    console.log('ℹ️  confidence column already exists or migration not needed');
+  }
+
+  try {
+    await pool.query(`
+      DO $$
+      BEGIN
+          IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns 
+              WHERE table_name = 'answers' AND column_name = 'keywords_json'
+          ) THEN
+              ALTER TABLE answers ADD COLUMN keywords_json JSONB;
+          END IF;
+      END $$
+    `);
+    console.log('✅ Migration: keywords_json column added to answers table');
+  } catch (error) {
+    console.log('ℹ️  keywords_json column already exists or migration not needed');
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS final_checks (
@@ -752,8 +838,8 @@ export async function saveAnswerToSession(answer: any) {
     const client = await pool.connect();
     try {
       await client.query(
-        'INSERT INTO answers (id, session_id, question_id, hebrew_answer, french_explanation, reasoning, sources_json, line_count, status, copied, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ON CONFLICT (id) DO UPDATE SET hebrew_answer=$4, french_explanation=$5, reasoning=$6, sources_json=$7, line_count=$8, status=$9, copied=$10, updated_at=$12',
-        [answer.id, answer.sessionId, answer.questionId, answer.hebrewAnswer, answer.frenchExplanation, answer.reasoning, JSON.stringify(answer.sources), answer.lineCount, answer.status, answer.copied, answer.createdAt, now]
+        'INSERT INTO answers (id, session_id, question_id, suggested_answer, user_answer, reasoning_fr, confidence, status, sources_json, keywords_json, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ON CONFLICT (id) DO UPDATE SET suggested_answer=$4, user_answer=$5, reasoning_fr=$6, confidence=$7, status=$8, sources_json=$9, keywords_json=$10, updated_at=$12',
+        [answer.id, answer.sessionId, answer.questionId, answer.suggestedAnswer, answer.userAnswer, answer.reasoningFr, answer.confidence || 0, answer.status || 'pending', JSON.stringify(answer.sources || []), JSON.stringify(answer.keywords || []), answer.createdAt, now]
       );
     } finally {
       client.release();
@@ -761,12 +847,12 @@ export async function saveAnswerToSession(answer: any) {
   } else {
     const sqlite = db as Database.Database;
     const stmt = sqlite.prepare(`
-      INSERT INTO answers (id, session_id, question_id, hebrew_answer, french_explanation, reasoning, sources_json, line_count, status, copied, created_at, updated_at)
+      INSERT INTO answers (id, session_id, question_id, suggested_answer, user_answer, reasoning_fr, confidence, status, sources_json, keywords_json, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT (id) DO UPDATE SET hebrew_answer=?, french_explanation=?, reasoning=?, sources_json=?, line_count=?, status=?, copied=?, updated_at=?
+      ON CONFLICT (id) DO UPDATE SET suggested_answer=?, user_answer=?, reasoning_fr=?, confidence=?, status=?, sources_json=?, keywords_json=?, updated_at=?
     `);
-    stmt.run(answer.id, answer.sessionId, answer.questionId, answer.hebrewAnswer, answer.frenchExplanation, answer.reasoning, JSON.stringify(answer.sources), answer.lineCount, answer.status, answer.copied, answer.createdAt, now,
-             answer.hebrewAnswer, answer.frenchExplanation, answer.reasoning, JSON.stringify(answer.sources), answer.lineCount, answer.status, answer.copied, now);
+    stmt.run(answer.id, answer.sessionId, answer.questionId, answer.suggestedAnswer, answer.userAnswer, answer.reasoningFr, answer.confidence || 0, answer.status || 'pending', JSON.stringify(answer.sources || []), JSON.stringify(answer.keywords || []), answer.createdAt, now,
+             answer.suggestedAnswer, answer.userAnswer, answer.reasoningFr, answer.confidence || 0, answer.status || 'pending', JSON.stringify(answer.sources || []), JSON.stringify(answer.keywords || []), now);
   }
 }
 

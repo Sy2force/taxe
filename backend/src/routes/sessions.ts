@@ -427,6 +427,406 @@ router.post('/:sessionId/questions/split-smart', async (req: Request, res: Respo
   }
 });
 
+// POST /api/sessions/:sessionId/questions/:questionId/generate - Generate answer for a single question
+router.post('/:sessionId/questions/:questionId/generate', async (req: Request, res: Response) => {
+  try {
+    const { sessionId, questionId } = req.params;
+    
+    console.log('[GENERATE_ANSWER] Generating answer for question:', questionId);
+    
+    const session = await getSession(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session non trouvée' });
+    }
+
+    // Get the question
+    const data = await getSessionData(sessionId);
+    const question = data.questions.find((q: any) => q.id === questionId);
+    if (!question) {
+      return res.status(404).json({ error: 'Question non trouvée' });
+    }
+
+    // Get the laws document chunks
+    const lawsDoc = await getDocumentBySession(sessionId, 'laws');
+    if (!lawsDoc) {
+      return res.status(400).json({ error: 'Aucun document de lois fiscales importé. Veuillez d\'abord importer le PDF des lois.' });
+    }
+
+    // Get chunks from database or use in-memory store
+    let chunks = await getChunksBySession(sessionId);
+    if (chunks.length === 0) {
+      // Fallback to in-memory store
+      const { getLawsChunks } = await import('../services/ragService.js');
+      chunks = getLawsChunks();
+    }
+
+    if (chunks.length === 0) {
+      return res.status(400).json({ error: 'Aucun chunk disponible. Veuillez réimporter le PDF des lois.' });
+    }
+
+    // Use RAG service to generate answer
+    const { generateAnswerWithRAG } = await import('../services/ragService.js');
+    const openai = getOpenAIClient();
+    
+    const questionHebrew = question.original_hebrew || question.originalText || '';
+    const ragResult = await generateAnswerWithRAG(questionHebrew, chunks, lawsDoc.page_count, openai);
+
+    if (!ragResult.hasSource) {
+      return res.json({
+        success: false,
+        hasSource: false,
+        noSourceMessage: ragResult.noSourceMessage
+      });
+    }
+
+    // Save answer to database
+    const answer = {
+      id: uuidv4(),
+      sessionId,
+      questionId,
+      suggestedAnswer: ragResult.answer,
+      userAnswer: '',
+      reasoningFr: ragResult.reasoning,
+      confidence: ragResult.chunks.length > 0 ? Math.min(100, 50 + ragResult.chunks[0].score * 10) : 0,
+      status: ragResult.hasSource ? 'generated' : 'insufficient_source',
+      sources: ragResult.chunks.map((c: any) => ({
+        pageNumber: c.page,
+        excerpt: c.text.substring(0, 300),
+        whyUseful: `Score: ${c.score.toFixed(2)}, Termes: ${c.matchedTerms.join(', ')}`
+      })),
+      keywords: [...ragResult.keywordsHe, ...ragResult.keywordsFr],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    await saveAnswerToSession(answer);
+
+    await refreshSessionData(sessionId);
+
+    console.log('[GENERATE_ANSWER] Answer generated and saved');
+
+    res.json({
+      success: true,
+      answer: {
+        id: answer.id,
+        questionId,
+        suggestedAnswer: ragResult.answer,
+        reasoningFr: ragResult.reasoning,
+        confidence: answer.confidence,
+        status: answer.status,
+        keywords: answer.keywords,
+        sources: answer.sources
+      }
+    });
+  } catch (error) {
+    console.error("POST /api/sessions/:sessionId/questions/:questionId/generate failed:", error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Erreur lors de la génération de la réponse'
+    });
+  }
+});
+
+// POST /api/sessions/:sessionId/generate-all-suggestions - Generate answers for all questions
+router.post('/:sessionId/generate-all-suggestions', async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    
+    console.log('[GENERATE_ALL] Generating answers for all questions in session:', sessionId);
+    
+    const session = await getSession(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session non trouvée' });
+    }
+
+    // Get all questions
+    const data = await getSessionData(sessionId);
+    const questions = data.questions;
+    if (questions.length === 0) {
+      return res.status(400).json({ error: 'Aucune question trouvée dans cette session' });
+    }
+
+    // Get the laws document chunks
+    const lawsDoc = await getDocumentBySession(sessionId, 'laws');
+    if (!lawsDoc) {
+      return res.status(400).json({ error: 'Aucun document de lois fiscales importé. Veuillez d\'abord importer le PDF des lois.' });
+    }
+
+    // Get chunks from database or use in-memory store
+    let chunks = await getChunksBySession(sessionId);
+    if (chunks.length === 0) {
+      // Fallback to in-memory store
+      const { getLawsChunks } = await import('../services/ragService.js');
+      chunks = getLawsChunks();
+    }
+
+    if (chunks.length === 0) {
+      return res.status(400).json({ error: 'Aucun chunk disponible. Veuillez réimporter le PDF des lois.' });
+    }
+
+    // Use RAG service to generate answers
+    const { generateAnswerWithRAG } = await import('../services/ragService.js');
+    const openai = getOpenAIClient();
+    
+    const answers = [];
+    for (const question of questions) {
+      const questionHebrew = question.original_hebrew || question.originalText || '';
+      const ragResult = await generateAnswerWithRAG(questionHebrew, chunks, lawsDoc.page_count, openai);
+
+      const answer = {
+        id: uuidv4(),
+        sessionId,
+        questionId: question.id,
+        suggestedAnswer: ragResult.hasSource ? ragResult.answer : '',
+        userAnswer: '',
+        reasoningFr: ragResult.hasSource ? ragResult.reasoning : ragResult.noSourceMessage || 'Source insuffisante',
+        confidence: ragResult.hasSource && ragResult.chunks.length > 0 ? Math.min(100, 50 + ragResult.chunks[0].score * 10) : 0,
+        status: ragResult.hasSource ? 'generated' : 'insufficient_source',
+        sources: ragResult.chunks.map((c: any) => ({
+          pageNumber: c.page,
+          excerpt: c.text.substring(0, 300),
+          whyUseful: `Score: ${c.score.toFixed(2)}, Termes: ${c.matchedTerms.join(', ')}`
+        })),
+        keywords: ragResult.hasSource ? [...ragResult.keywordsHe, ...ragResult.keywordsFr] : [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      await saveAnswerToSession(answer);
+      answers.push({
+        questionId: question.id,
+        suggestedAnswer: answer.suggestedAnswer,
+        reasoningFr: answer.reasoningFr,
+        confidence: answer.confidence,
+        status: answer.status,
+        keywords: answer.keywords,
+        sources: answer.sources
+      });
+    }
+
+    await refreshSessionData(sessionId);
+
+    console.log('[GENERATE_ALL] All answers generated and saved:', answers.length);
+
+    res.json({
+      success: true,
+      answers,
+      total: answers.length
+    });
+  } catch (error) {
+    console.error("POST /api/sessions/:sessionId/generate-all-suggestions failed:", error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Erreur lors de la génération des réponses'
+    });
+  }
+});
+
+// POST /api/sessions/:sessionId/questions/:questionId/improve-answer - Improve an existing answer
+router.post('/:sessionId/questions/:questionId/improve-answer', async (req: Request, res: Response) => {
+  try {
+    const { sessionId, questionId } = req.params;
+    const { currentAnswer } = req.body;
+    
+    console.log('[IMPROVE_ANSWER] Improving answer for question:', questionId);
+    
+    const session = await getSession(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session non trouvée' });
+    }
+
+    // Get the question
+    const data = await getSessionData(sessionId);
+    const question = data.questions.find((q: any) => q.id === questionId);
+    if (!question) {
+      return res.status(404).json({ error: 'Question non trouvée' });
+    }
+
+    // Get chunks
+    let chunks = await getChunksBySession(sessionId);
+    if (chunks.length === 0) {
+      const { getLawsChunks } = await import('../services/ragService.js');
+      chunks = getLawsChunks();
+    }
+
+    if (chunks.length === 0) {
+      return res.status(400).json({ error: 'Aucun chunk disponible' });
+    }
+
+    // Use OpenAI to improve the answer
+    const openai = getOpenAIClient();
+    if (!openai) {
+      return res.status(400).json({ error: 'OpenAI non configuré' });
+    }
+
+    const questionHebrew = question.original_hebrew || question.originalText || '';
+    const context = chunks.slice(0, 5).map(c => `[Page ${c.page}]\n${c.text}`).join('\n\n---\n\n');
+
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'system',
+          content: `Tu es un assistant pédagogique expert en fiscalité israélienne.
+          
+Améliore la réponse de l'étudiant en utilisant UNIQUEMENT les sources fournies.
+Ne réponds pas sans source.
+Retourne uniquement un JSON valide :
+{
+  "improvedAnswer": "...",
+  "reasoning": "Explication de l'amélioration",
+  "confidence": 85
+}`
+        },
+        {
+          role: 'user',
+          content: `QUESTION :\n${questionHebrew}\n\nRÉPONSE ACTUELLE DE L'ÉTUDIANT :\n${currentAnswer}\n\nSOURCES DU DOCUMENT DE LOIS :\n\n${context}`
+        }
+      ],
+      temperature: 0.3,
+      max_tokens: 1200
+    });
+
+    const raw = response.choices[0].message.content || '';
+    let parsed: Record<string, unknown> = {};
+    try {
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
+    } catch { }
+
+    const improvedAnswer = String(parsed['improvedAnswer'] || currentAnswer);
+    const reasoning = String(parsed['reasoning'] || 'Amélioration basée sur les sources');
+    const confidence = Number(parsed['confidence']) || 75;
+
+    // Update answer in database
+    const existingAnswer = data.answers.find((a: any) => a.question_id === questionId);
+    if (existingAnswer) {
+      await saveAnswerToSession({
+        id: existingAnswer.id,
+        sessionId,
+        questionId,
+        suggestedAnswer: improvedAnswer,
+        userAnswer: existingAnswer.user_answer || '',
+        reasoningFr: reasoning,
+        confidence,
+        status: 'improved',
+        sources: existingAnswer.sources_json ? JSON.parse(existingAnswer.sources_json) : [],
+        keywords: existingAnswer.keywords_json ? JSON.parse(existingAnswer.keywords_json) : [],
+        createdAt: existingAnswer.created_at,
+        updatedAt: new Date().toISOString()
+      });
+    }
+
+    await refreshSessionData(sessionId);
+
+    res.json({
+      success: true,
+      improvedAnswer,
+      reasoning,
+      confidence
+    });
+  } catch (error) {
+    console.error("POST /api/sessions/:sessionId/questions/:questionId/improve-answer failed:", error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Erreur lors de l\'amélioration de la réponse'
+    });
+  }
+});
+
+// PATCH /api/sessions/:sessionId/questions/:questionId/answer - Save user's answer
+router.patch('/:sessionId/questions/:questionId/answer', async (req: Request, res: Response) => {
+  try {
+    const { sessionId, questionId } = req.params;
+    const { userAnswer } = req.body;
+    
+    console.log('[SAVE_ANSWER] Saving user answer for question:', questionId);
+    
+    const session = await getSession(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session non trouvée' });
+    }
+
+    // Get existing answer
+    const data = await getSessionData(sessionId);
+    const existingAnswer = data.answers.find((a: any) => a.question_id === questionId);
+
+    if (existingAnswer) {
+      await saveAnswerToSession({
+        id: existingAnswer.id,
+        sessionId,
+        questionId,
+        suggestedAnswer: existingAnswer.suggested_answer || '',
+        userAnswer: userAnswer,
+        reasoningFr: existingAnswer.reasoning_fr || '',
+        confidence: existingAnswer.confidence || 0,
+        status: 'user_edited',
+        sources: existingAnswer.sources_json ? JSON.parse(existingAnswer.sources_json) : [],
+        keywords: existingAnswer.keywords_json ? JSON.parse(existingAnswer.keywords_json) : [],
+        createdAt: existingAnswer.created_at,
+        updatedAt: new Date().toISOString()
+      });
+    } else {
+      // Create new answer
+      await saveAnswerToSession({
+        id: uuidv4(),
+        sessionId,
+        questionId,
+        suggestedAnswer: '',
+        userAnswer: userAnswer,
+        reasoningFr: '',
+        confidence: 0,
+        status: 'user_edited',
+        sources: [],
+        keywords: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    }
+
+    await refreshSessionData(sessionId);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("PATCH /api/sessions/:sessionId/questions/:questionId/answer failed:", error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Erreur lors de la sauvegarde de la réponse'
+    });
+  }
+});
+
+// Helper function to get chunks by session
+async function getChunksBySession(sessionId: string) {
+  const db = await getDatabase();
+  if ('query' in db) {
+    // PostgreSQL
+    const result = await db.query(
+      'SELECT * FROM document_chunks WHERE session_id = $1 ORDER BY chunk_index',
+      [sessionId]
+    );
+    return result.rows.map((row: any) => ({
+      id: row.chunk_index,
+      text: row.text,
+      page: row.page_number,
+      startChar: 0,
+      endChar: row.text.length
+    }));
+  } else {
+    // SQLite
+    const chunks = db.prepare(
+      'SELECT * FROM document_chunks WHERE session_id = ? ORDER BY chunk_index'
+    ).all(sessionId) as any[];
+    return chunks.map(row => ({
+      id: row.chunk_index,
+      text: row.text,
+      page: row.page_number,
+      startChar: 0,
+      endChar: row.text.length
+    }));
+  }
+}
+
 // POST /api/sessions/:sessionId/questions/translate-all - Translate all questions
 router.post('/:sessionId/questions/translate-all', async (req: Request, res: Response) => {
   console.log("[TRANSLATE_ALL] start");
