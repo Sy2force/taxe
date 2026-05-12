@@ -110,9 +110,12 @@ export default function VerificationPage() {
       <div className="space-y-4">
         {questions.map((q) => {
           const check = finalChecks.find((c: any) => c.question_id === q.id);
-          const score = check?.score || 0;
           const answer = sessionData?.answers?.find((a: any) => a.question_id === q.id);
-          const studentAnswer = answer?.hebrew_answer || '';
+          const studentAnswer = answer?.user_answer || answer?.suggested_answer || '';
+          const confidence = answer?.confidence || 0;
+          const sources = answer?.sources_json ? (Array.isArray(answer.sources_json) ? answer.sources_json : JSON.parse(answer.sources_json || '[]')) : [];
+          const keywords = answer?.keywords_json ? (Array.isArray(answer.keywords_json) ? answer.keywords_json : JSON.parse(answer.keywords_json || '[]')) : [];
+          const reasoning = answer?.reasoning_fr || '';
 
           if (!check) {
             return (
@@ -125,6 +128,8 @@ export default function VerificationPage() {
               </div>
             );
           }
+
+          const score = check?.score || 0;
 
           return (
             <div key={q.id} className="rounded-2xl p-5" style={{ background: 'rgba(24,24,27,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}>
@@ -150,11 +155,40 @@ export default function VerificationPage() {
                 </div>
               )}
 
-              {/* AI suggestion */}
-              {answer?.hebrew_answer && (
+              {/* RAG Sources */}
+              {sources.length > 0 && (
                 <div className="mb-3">
-                  <p className="text-[11px] font-medium text-text-tertiary mb-1">Suggestion AI:</p>
-                  <p className="text-[13px] text-text-secondary leading-relaxed" dir="rtl">{answer.hebrew_answer}</p>
+                  <p className="text-[11px] font-medium text-text-tertiary mb-1">Pages utilisées:</p>
+                  <div className="space-y-1">
+                    {sources.slice(0, 3).map((s: any, i: number) => (
+                      <p key={i} className="text-[12px] text-cyan-400/90">
+                        - Page {s.pageNumber}: {s.whyUseful}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Keywords */}
+              {keywords.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-[11px] font-medium text-text-tertiary mb-1">Mots-clés:</p>
+                  <p className="text-[12px] text-text-tertiary">{keywords.join(', ')}</p>
+                </div>
+              )}
+
+              {/* Confidence */}
+              {confidence > 0 && (
+                <div className="mb-3">
+                  <p className="text-[11px] font-medium text-text-tertiary mb-1">Confiance de la génération: {confidence}%</p>
+                </div>
+              )}
+
+              {/* Reasoning */}
+              {reasoning && (
+                <div className="mb-3">
+                  <p className="text-[11px] font-medium text-text-tertiary mb-1">Pourquoi cette réponse:</p>
+                  <p className="text-[12px] text-text-secondary">{reasoning}</p>
                 </div>
               )}
 
