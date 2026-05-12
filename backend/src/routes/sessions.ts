@@ -226,8 +226,8 @@ router.post('/:sessionId/upload-exercise', upload.single('file'), async (req: Re
     
     console.log("[UPLOAD_EXERCISE] saving questions...");
     console.time("[UPLOAD_EXERCISE] save-questions");
-    for (const q of enhancedQuestions) {
-      await Promise.race([
+    await Promise.race([
+      Promise.all(enhancedQuestions.map(q =>
         saveQuestionToSession({
           id: uuidv4(),
           sessionId,
@@ -240,10 +240,10 @@ router.post('/:sessionId/upload-exercise', upload.single('file'), async (req: Re
           status: 'pending',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
-        }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("DB_SAVE_TIMEOUT")), 5000))
-      ]);
-    }
+        })
+      )),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("DB_SAVE_TIMEOUT")), 15000))
+    ]);
     console.timeEnd("[UPLOAD_EXERCISE] save-questions");
 
     console.timeEnd("[UPLOAD_EXERCISE] total");
