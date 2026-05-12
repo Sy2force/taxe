@@ -1,6 +1,11 @@
 import pg from 'pg';
 const { Pool } = pg;
 
+type ColumnRow = {
+  column_name: string;
+  data_type: string;
+};
+
 async function migrate() {
   const connectionString = process.env.DATABASE_URL;
   
@@ -60,7 +65,7 @@ async function migrate() {
       `);
       
       console.log('Current columns in questions table:');
-      columns.rows.forEach(row => {
+      columns.rows.forEach((row: ColumnRow) => {
         console.log(`  - ${row.column_name}: ${row.data_type}`);
       });
 

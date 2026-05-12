@@ -1,5 +1,5 @@
-import express from 'express';
-import cors from 'cors';
+import express, { Request, Response } from 'express';
+import cors, { CorsOptions } from 'cors';
 import dotenv from 'dotenv';
 import sessionsRouter from './routes/sessions.js';
 import { ensureUploadDir } from './services/documentService.js';
@@ -24,11 +24,11 @@ const allowedOrigins = [
   process.env.ALLOWED_ORIGINS?.split(',').map(o => o.trim()) || []
 );
 
-app.use(cors({
-  origin: (origin, callback) => {
+const corsOptions: CorsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     // Allow requests with no origin (like mobile apps, curl, Postman)
     if (!origin) return callback(null, true);
-    
+
     if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
       console.log(`✅ CORS allowed: ${origin}`);
       callback(null, true);
@@ -40,18 +40,20 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+};
+
+app.use(cors(corsOptions));
 
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 app.use('/api/sessions', sessionsRouter);
 
-app.get('/health', (_req, res) => {
+app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', port: PORT, timestamp: new Date().toISOString() });
 });
 
-app.get('/api/health', (_req, res) => {
+app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', port: PORT, timestamp: new Date().toISOString() });
 });
 
