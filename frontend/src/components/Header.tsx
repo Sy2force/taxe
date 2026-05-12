@@ -121,7 +121,7 @@ export default function Header() {
               </button>
               <button
                 onClick={() => {
-                  const link = `${import.meta.env.VITE_PUBLIC_APP_URL || 'http://localhost:5173'}/answers?session=${sessionId}`;
+                  const link = `${import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin}/answers?session=${sessionId}`;
                   navigator.clipboard.writeText(link);
                 }}
                 className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full text-[11px] font-medium transition-all"

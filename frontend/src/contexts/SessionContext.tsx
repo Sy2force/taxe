@@ -1,8 +1,12 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5051";
+const API_BASE_URL = import.meta.env.VITE_API_URL;
+console.log("VITE_API_URL:", API_BASE_URL);
+if (!API_BASE_URL) {
+  throw new Error("VITE_API_URL is missing");
+}
 const API = `${API_BASE_URL}/api`;
-const PUBLIC_APP_URL = import.meta.env.VITE_PUBLIC_APP_URL || "http://localhost:5173";
+const PUBLIC_APP_URL = import.meta.env.VITE_PUBLIC_APP_URL || window.location.origin;
 
 export interface SessionData {
   session: any;

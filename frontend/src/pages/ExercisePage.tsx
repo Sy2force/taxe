@@ -201,7 +201,11 @@ export default function ExercisePage() {
     
     setUploading(true);
     try {
-      const response = await fetch(`http://localhost:5051/api/sessions/${sessionId}/questions/split-smart`, {
+      const API_BASE_URL = import.meta.env.VITE_API_URL;
+      if (!API_BASE_URL) {
+        throw new Error("VITE_API_URL is missing");
+      }
+      const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/questions/split-smart`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ expectedCount: 8 })
