@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "tsc --skipLibCheck",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "migrate:add-cleaned-hebrew": "tsx src/scripts/migrate-add-cleaned-hebrew.ts"
