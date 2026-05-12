@@ -253,6 +253,7 @@ Règles:
 
     res.json({
       ...doc,
+      extracted_text: text,
       chars: text.length,
       questionsDetected: questions.length
     });
