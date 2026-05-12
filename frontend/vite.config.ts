@@ -11,6 +11,12 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: undefined
+      },
+      onwarn(warning, warn) {
+        if (warning.code === 'MODULE_BROKEN_DEPENDENCY') {
+          return
+        }
+        warn(warning)
       }
     }
   },
@@ -30,9 +36,8 @@ export default defineConfig({
   define: {
     global: 'globalThis',
   },
-  resolve: {
-    alias: {
-      './runtimeConfig': './runtimeConfig.browser'
-    }
+  optimizeDeps: {
+    exclude: [],
+    include: []
   }
 })
