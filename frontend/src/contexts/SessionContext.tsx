@@ -55,7 +55,9 @@ interface SessionContextType {
   correctFinalDocument: () => Promise<void>;
   validateQuestions: (questions: any[]) => Promise<void>;
   generateAnswer: (questionId: string) => Promise<void>;
-  generateAllAnswers: () => Promise<void>;
+  generateAllSuggestions: () => Promise<void>;
+  improveAnswer: (questionId: string, currentAnswer: string) => Promise<void>;
+  saveUserAnswer: (questionId: string, userAnswer: string) => Promise<void>;
   optimizeAnswer: (questionId: string, instruction: string) => Promise<void>;
   finalVerify: () => Promise<void>;
   generateFinalReport: () => Promise<void>;
@@ -521,16 +523,50 @@ export function SessionProvider({ children }: SessionProviderProps) {
     const response = await fetch(`${API}/sessions/${sessionId}/questions/${questionId}/generate`, {
       method: 'POST'
     });
-    if (!response.ok) throw new Error('Erreur lors de la génération de la réponse');
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Erreur lors de la génération de la réponse');
+    }
     await refreshSession();
   };
 
-  const generateAllAnswers = async () => {
+  const generateAllSuggestions = async () => {
     if (!sessionId) throw new Error('Aucune session active');
-    const response = await fetch(`${API}/sessions/${sessionId}/generate-all-answers`, {
+    const response = await fetch(`${API}/sessions/${sessionId}/generate-all-suggestions`, {
       method: 'POST'
     });
-    if (!response.ok) throw new Error('Erreur lors de la génération des réponses');
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Erreur lors de la génération des suggestions');
+    }
+    await refreshSession();
+  };
+
+  const improveAnswer = async (questionId: string, currentAnswer: string) => {
+    if (!sessionId) throw new Error('Aucune session active');
+    const response = await fetch(`${API}/sessions/${sessionId}/questions/${questionId}/improve-answer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentAnswer })
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Erreur lors de l\'amélioration de la réponse');
+    }
+    await refreshSession();
+  };
+
+  const saveUserAnswer = async (questionId: string, userAnswer: string) => {
+    if (!sessionId) throw new Error('Aucune session active');
+    const response = await fetch(`${API}/sessions/${sessionId}/questions/${questionId}/answer`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userAnswer })
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Erreur lors de la sauvegarde de la réponse');
+    }
     await refreshSession();
   };
 
@@ -633,7 +669,9 @@ export function SessionProvider({ children }: SessionProviderProps) {
     correctFinalDocument,
     validateQuestions,
     generateAnswer,
-    generateAllAnswers,
+    generateAllSuggestions,
+    improveAnswer,
+    saveUserAnswer,
     optimizeAnswer,
     finalVerify,
     generateFinalReport,

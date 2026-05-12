@@ -30,7 +30,7 @@ interface Answer {
 }
 
 export default function AnswersPage() {
-  const { sessionData, generateAnswer } = useSessionContext();
+  const { sessionData, generateAnswer, generateAllSuggestions } = useSessionContext();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Map<number, Answer>>(new Map());
   const [loading, setLoading] = useState(false);
@@ -59,12 +59,12 @@ export default function AnswersPage() {
       sessionData.answers.forEach((a: any) => {
         ansMap.set(a.question_id, {
           questionId: a.question_id,
-          suggestion: a.hebrew_answer || a.answer || '',
-          whyThisAnswer: a.reasoning || a.french_explanation || '',
-          sources: a.sources_json || [],
-          keywords: a.keywords_he || a.keywords_fr || [],
-          confidence: a.confidence_score || 0,
-          status: a.status || 'not_started'
+          suggestion: a.suggested_answer || a.hebrew_answer || a.answer || '',
+          whyThisAnswer: a.reasoning_fr || a.reasoning || a.french_explanation || '',
+          sources: a.sources_json ? (Array.isArray(a.sources_json) ? a.sources_json : JSON.parse(a.sources_json || '[]')) : [],
+          keywords: a.keywords_json ? (Array.isArray(a.keywords_json) ? a.keywords_json : JSON.parse(a.keywords_json || '[]')) : (a.keywords_he || a.keywords_fr || []),
+          confidence: a.confidence || a.confidence_score || 0,
+          status: a.status === 'insufficient_source' ? 'no_laws' : (a.status === 'generated' || a.status === 'improved' ? 'done' : 'not_started')
         });
       });
       setAnswers(ansMap);
@@ -75,9 +75,7 @@ export default function AnswersPage() {
     if (!hasLaws) return;
     setLoading(true);
     try {
-      for (const q of questions) {
-        await generateAnswer(q.id.toString());
-      }
+      await generateAllSuggestions();
     } catch (error) {
       console.error('Error generating answers:', error);
     } finally {
