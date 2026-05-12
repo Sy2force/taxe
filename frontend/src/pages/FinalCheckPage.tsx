@@ -10,6 +10,7 @@ export default function FinalCheckPage() {
 
   const questions = sessionData?.questions || [];
   const finalChecks = sessionData?.finalChecks || [];
+  const answers = sessionData?.answers || [];
   const finalReport = sessionData?.finalReport;
   const hasVerification = finalChecks.length > 0;
 
@@ -27,6 +28,23 @@ export default function FinalCheckPage() {
     ? finalChecks.reduce((sum: number, c: any) => sum + (c.score || 0), 0) / finalChecks.length 
     : 0;
 
+  // RAG metrics
+  const avgConfidence = answers.length > 0
+    ? answers.reduce((sum: number, a: any) => sum + (a.confidence || 0), 0) / answers.length
+    : 0;
+  
+  const allSources = answers.flatMap((a: any) => {
+    const sources = a.sources_json ? (Array.isArray(a.sources_json) ? a.sources_json : JSON.parse(a.sources_json || '[]')) : [];
+    return sources.map((s: any) => s.pageNumber);
+  });
+  const uniquePages = [...new Set(allSources)].sort((a, b) => a - b);
+  
+  const allKeywords = answers.flatMap((a: any) => {
+    const keywords = a.keywords_json ? (Array.isArray(a.keywords_json) ? a.keywords_json : JSON.parse(a.keywords_json || '[]')) : [];
+    return keywords;
+  });
+  const uniqueKeywords = [...new Set(allKeywords)];
+
   // Calculate strengths and weaknesses
   const strengths: string[] = [];
   const weaknesses: string[] = [];
@@ -41,6 +59,19 @@ export default function FinalCheckPage() {
 
   if (finalChecks.length === 0) {
     weaknesses.push('Aucune correction effectuée');
+  }
+
+  // RAG-based insights
+  if (avgConfidence >= 70) {
+    strengths.push(`Confiance moyenne de génération IA élevée: ${Math.round(avgConfidence)}%`);
+  } else if (avgConfidence < 50 && avgConfidence > 0) {
+    weaknesses.push(`Confiance moyenne de génération IA faible: ${Math.round(avgConfidence)}%`);
+  }
+
+  if (uniquePages.length >= 5) {
+    strengths.push(`Diversité des sources: ${uniquePages.length} pages différentes utilisées`);
+  } else if (uniquePages.length > 0 && uniquePages.length < 3) {
+    weaknesses.push(`Diversité limitée des sources: seulement ${uniquePages.length} page(s) utilisée(s)`);
   }
 
   // Global suggestions based on average score
@@ -136,6 +167,39 @@ export default function FinalCheckPage() {
               </div>
             </div>
           </div>
+
+          {/* RAG metrics */}
+          {answers.length > 0 && (
+            <div className="rounded-2xl p-5 mb-6" style={{ background: 'rgba(6,182,212,0.06)', border: '1px solid rgba(6,182,212,0.15)' }}>
+              <h2 className="text-[16px] font-semibold text-cyan-400 mb-4">Métriques RAG</h2>
+              <div className="space-y-3">
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-text-tertiary">Confiance moyenne IA:</span>
+                  <span className="text-text-primary">{Math.round(avgConfidence)}%</span>
+                </div>
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-text-tertiary">Pages utilisées:</span>
+                  <span className="text-text-primary">{uniquePages.length}</span>
+                </div>
+                {uniquePages.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-[11px] text-text-tertiary mb-1">Pages:</p>
+                    <p className="text-[12px] text-cyan-400/90">{uniquePages.slice(0, 10).join(', ')}{uniquePages.length > 10 ? '...' : ''}</p>
+                  </div>
+                )}
+                <div className="flex justify-between text-[13px]">
+                  <span className="text-text-tertiary">Mots-clés uniques:</span>
+                  <span className="text-text-primary">{uniqueKeywords.length}</span>
+                </div>
+                {uniqueKeywords.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-[11px] text-text-tertiary mb-1">Mots-clés:</p>
+                    <p className="text-[12px] text-cyan-400/90">{uniqueKeywords.slice(0, 8).join(', ')}{uniqueKeywords.length > 8 ? '...' : ''}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Strengths */}
           {strengths.length > 0 && (
