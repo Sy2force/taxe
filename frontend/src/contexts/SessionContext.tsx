@@ -308,16 +308,25 @@ export function SessionProvider({ children }: SessionProviderProps) {
     navigator.clipboard.writeText(link);
   };
 
-  const ensureSession = async (): Promise<string> => {
+  const ensureSession = async (signal?: AbortSignal): Promise<string> => {
     console.log('ensureSession called, current sessionId:', sessionId);
     // Check localStorage first if React state is null
     const localSessionId = sessionId || localStorage.getItem('current_session_id');
     console.log('ensureSession localSessionId:', localSessionId);
     
+    // Helper to add 15s timeout to fetch (per-request)
+    const fetchWithTimeout = (url: string, options: RequestInit = {}, timeoutMs = 15000) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const combinedSignal = signal || controller.signal;
+      return fetch(url, { ...options, signal: combinedSignal })
+        .finally(() => clearTimeout(timer));
+    };
+    
     // If we have a sessionId (from state or localStorage), verify it exists
     if (localSessionId) {
       try {
-        const response = await fetch(`${API}/sessions/${localSessionId}`);
+        const response = await fetchWithTimeout(`${API}/sessions/${localSessionId}`);
         if (response.ok) {
           // Update React state if it was null
           if (!sessionId) {
@@ -342,11 +351,11 @@ export function SessionProvider({ children }: SessionProviderProps) {
       const url = `${API}/sessions`;
       console.log('ensureSession creating new session at:', url);
       
-      const response = await fetch(url, {
+      const response = await fetchWithTimeout(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: 'Session sans titre' })
-      });
+      }, 30000); // 30s for session creation (allows Render cold start)
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -374,6 +383,9 @@ export function SessionProvider({ children }: SessionProviderProps) {
       console.error('Erreur création session dans ensureSession:', err);
       setError('Impossible de se connecter au backend. Vérifiez que le serveur est démarré.');
       setLoading(false);
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new Error('Le serveur ne répond pas. Le backend Render est peut-être en train de se réveiller, réessayez dans 30s.');
+      }
       throw new Error('Impossible de créer une session');
     }
   };
@@ -383,7 +395,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     const timeout = setTimeout(() => controller.abort(), 90000); // 90 seconds timeout
     
     try {
-      const validSessionId = await ensureSession();
+      const validSessionId = await ensureSession(controller.signal);
       const formData = new FormData();
       formData.append('file', file);
       const url = `${API}/sessions/${validSessionId}/upload-exercise`;
