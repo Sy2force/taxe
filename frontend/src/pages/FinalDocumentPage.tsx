@@ -1,21 +1,24 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSessionContext } from '../contexts/SessionContext';
-import { Upload, CheckCircle, AlertCircle, Loader2, ChevronRight, ArrowLeft } from 'lucide-react';
+import { Upload, CheckCircle, AlertCircle, Loader2, ChevronRight, ArrowLeft, FileText, Sparkles } from 'lucide-react';
 
 export default function FinalDocumentPage() {
   const navigate = useNavigate();
-  const { sessionData, uploadFinalDocument } = useSessionContext();
+  const { sessionData, uploadFinalDocument, saveUserAnswer } = useSessionContext();
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMsg, setErrorMsg] = useState('');
   const [fileInfo, setFileInfo] = useState<{ name: string; chars: number; answersDetected: number } | null>(null);
+  const [useGenerated, setUseGenerated] = useState(false);
+  const [editingAnswer, setEditingAnswer] = useState<{ questionId: string; text: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const finalDocument = sessionData?.documents?.find((d: any) => d.type === 'final');
-  const studentAnswers = sessionData?.answers?.filter((a: any) => a.status === 'completed') || [];
   const answers = sessionData?.answers || [];
-  const hasAnswers = answers.length > 0;
+  const questions = sessionData?.questions || [];
+  const hasAnswers = answers.length > 0 && answers.some((a: any) => a.suggested_answer || a.user_answer);
+  const hasGeneratedAnswers = answers.some((a: any) => a.suggested_answer && a.status === 'generated');
 
   const handleUpload = async (f: File) => {
     setUploading(true);
@@ -30,7 +33,7 @@ export default function FinalDocumentPage() {
       setFileInfo({
         name: f.name,
         chars: data.character_count,
-        answersDetected: studentAnswers.length
+        answersDetected: answers.length
       });
       setStatus('success');
     } catch (err) {
@@ -40,6 +43,25 @@ export default function FinalDocumentPage() {
       setStatus('error');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleUseGenerated = () => {
+    setUseGenerated(true);
+    setStatus('success');
+    setFileInfo({
+      name: 'Réponses générées par IA',
+      chars: answers.reduce((sum: number, a: any) => sum + (a.suggested_answer?.length || 0), 0),
+      answersDetected: answers.length
+    });
+  };
+
+  const handleSaveAnswer = async (questionId: string, text: string) => {
+    try {
+      await saveUserAnswer(questionId, text);
+      setEditingAnswer(null);
+    } catch (error) {
+      console.error('Error saving answer:', error);
     }
   };
 
@@ -54,11 +76,11 @@ export default function FinalDocumentPage() {
       setFileInfo({
         name: finalDocument.filename,
         chars: finalDocument.character_count,
-        answersDetected: studentAnswers.length
+        answersDetected: answers.length
       });
       setStatus('success');
     }
-  }, [finalDocument, studentAnswers]);
+  }, [finalDocument, answers]);
 
   return (
     <div className="min-h-screen px-4 sm:px-6 lg:px-8 py-6 sm:py-10 max-w-3xl mx-auto">
@@ -92,6 +114,7 @@ export default function FinalDocumentPage() {
 
       {/* Upload Zone */}
       {status !== 'success' && (
+        <>
         <div
           onDrop={handleDrop}
           onDragOver={e => e.preventDefault()}
@@ -128,6 +151,26 @@ export default function FinalDocumentPage() {
             </div>
           )}
         </div>
+
+        {/* Option to use generated answers */}
+        {hasGeneratedAnswers && (
+          <div className="rounded-2xl p-6 mb-6"
+            style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)' }}>
+            <div className="flex items-center gap-3 mb-4">
+              <Sparkles className="w-5 h-5 text-emerald-400" />
+              <p className="text-[14px] font-medium text-emerald-300">Réponses générées disponibles</p>
+            </div>
+            <p className="text-[12px] text-emerald-400/70 mb-4">
+              Vous pouvez utiliser les suggestions générées par l'IA comme point de départ pour votre devoir.
+            </p>
+            <button onClick={handleUseGenerated}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold text-white transition-all"
+              style={{ background: 'linear-gradient(135deg,#10b981,#059669)', boxShadow: '0 4px 12px rgba(16,185,129,0.25)' }}>
+              <FileText className="w-4 h-4" /> Utiliser les réponses générées
+            </button>
+          </div>
+        )}
+        </>
       )}
 
       {/* Error */}
@@ -141,6 +184,7 @@ export default function FinalDocumentPage() {
 
       {/* Success */}
       {status === 'success' && fileInfo && (
+        <>
         <div className="rounded-xl p-6 mb-6"
           style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)' }}>
           <div className="flex items-center gap-3 mb-4">
@@ -162,6 +206,65 @@ export default function FinalDocumentPage() {
             </div>
           </div>
         </div>
+
+        {/* Answers editing interface when using generated answers */}
+        {useGenerated && questions.length > 0 && (
+          <div className="space-y-4 mb-6">
+            {questions.map((q: any) => {
+              const answer = answers.find((a: any) => a.question_id === q.id);
+              const currentAnswer = answer?.user_answer || answer?.suggested_answer || '';
+              const isEditing = editingAnswer?.questionId === q.id;
+              
+              return (
+                <div key={q.id} className="rounded-xl p-4" style={{ background: 'rgba(24,24,27,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                  <div className="mb-3">
+                    <p className="text-[11px] font-medium text-text-tertiary mb-1">Question {q.number}</p>
+                    <p className="text-[13px] text-text-primary leading-relaxed" dir="rtl">{q.original_hebrew || q.originalText}</p>
+                  </div>
+                  
+                  <div className="mb-3">
+                    <p className="text-[11px] font-medium text-text-tertiary mb-1">Réponse actuelle:</p>
+                    {isEditing ? (
+                      <textarea
+                        value={editingAnswer?.text || currentAnswer}
+                        onChange={e => setEditingAnswer({ questionId: q.id, text: e.target.value })}
+                        rows={6}
+                        dir="rtl"
+                        className="w-full bg-zinc-950/60 text-[13px] text-text-primary p-3 rounded-lg focus:outline-none resize-none leading-relaxed"
+                      />
+                    ) : (
+                      <p className="text-[13px] text-text-secondary leading-relaxed" dir="rtl">{currentAnswer || 'Non renseignée'}</p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2">
+                    {isEditing ? (
+                      <>
+                        <button onClick={() => handleSaveAnswer(q.id, editingAnswer?.text || currentAnswer)}
+                          className="px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                          style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: '#6ee7b7' }}>
+                          Sauvegarder
+                        </button>
+                        <button onClick={() => setEditingAnswer(null)}
+                          className="px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                          style={{ background: 'rgba(39,39,42,0.8)', border: '1px solid rgba(255,255,255,0.08)', color: '#a1a1aa' }}>
+                          Annuler
+                        </button>
+                      </>
+                    ) : (
+                      <button onClick={() => setEditingAnswer({ questionId: q.id, text: currentAnswer })}
+                        className="px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                        style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)', color: '#a5b4fc' }}>
+                        Modifier
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        </>
       )}
 
       {/* Actions */}
