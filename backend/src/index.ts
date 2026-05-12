@@ -44,6 +44,12 @@ const corsOptions: CorsOptions = {
 
 app.use(cors(corsOptions));
 
+// Log every request as it arrives (BEFORE multer/parsers)
+app.use((req: Request, _res: Response, next) => {
+  console.log(`[REQ] ${new Date().toISOString()} ${req.method} ${req.url}`);
+  next();
+});
+
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
