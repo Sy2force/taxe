@@ -379,6 +379,9 @@ export function SessionProvider({ children }: SessionProviderProps) {
   };
 
   const uploadExercise = async (file: File) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 90000); // 90 seconds timeout
+    
     try {
       const validSessionId = await ensureSession();
       const formData = new FormData();
@@ -392,10 +395,15 @@ export function SessionProvider({ children }: SessionProviderProps) {
         fileSize: file.size,
         fileType: file.type
       });
+      
       const response = await fetch(url, {
         method: 'POST',
-        body: formData
+        body: formData,
+        signal: controller.signal
       });
+      
+      clearTimeout(timeout);
+      
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || 'Erreur lors de l\'upload de l\'exercice');
@@ -404,7 +412,13 @@ export function SessionProvider({ children }: SessionProviderProps) {
       await refreshSession();
       return data;
     } catch (err) {
+      clearTimeout(timeout);
       console.error('Upload exercise error:', err);
+      
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new Error('L\'analyse prend trop longtemps. Le PDF est peut-être lourd ou scanné. Réessayez ou utilisez le découpage manuel.');
+      }
+      
       throw err;
     }
   };

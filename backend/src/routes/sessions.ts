@@ -17,6 +17,7 @@ import {
   saveAnswerToSession,
   saveFinalCheckToSession,
   saveDocumentChunkToSession,
+  updateQuestionTranslation,
   getDatabase
 } from '../services/database.js';
 
@@ -120,40 +121,59 @@ router.get('/:sessionId/progress', async (req: Request, res: Response) => {
 
 // POST /api/sessions/:sessionId/upload-exercise - Upload exercise file
 router.post('/:sessionId/upload-exercise', upload.single('file'), async (req: Request, res: Response) => {
+  console.log("[UPLOAD_EXERCISE] start");
+  console.time("[UPLOAD_EXERCISE] total");
+  
+  // Add timeout safety for entire upload process
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("UPLOAD_EXERCISE_TIMEOUT")), 120000)
+  );
+  
   try {
     const { sessionId } = req.params;
     const file = req.file;
     
-    console.log("UPLOAD_EXERCISE_BACKEND_START", {
-      sessionId: req.params.sessionId,
-      hasFile: !!req.file,
-      fileName: req.file?.originalname,
-      mimeType: req.file?.mimetype,
-      size: req.file?.size,
-      path: req.file?.path
+    console.log("[UPLOAD_EXERCISE] file info:", {
+      sessionId,
+      hasFile: !!file,
+      fileName: file?.originalname,
+      mimeType: file?.mimetype,
+      size: file?.size,
+      path: file?.path
     });
     
     if (!file) {
-      console.error("UPLOAD_EXERCISE_ERROR: No file received");
+      console.error("[UPLOAD_EXERCISE] ERROR: No file received");
       return res.status(400).json({ error: 'Aucun fichier reçu par le serveur.' });
     }
 
     const session = await getSession(sessionId);
     if (!session) {
-      console.error("UPLOAD_EXERCISE_ERROR: Session not found", sessionId);
+      console.error("[UPLOAD_EXERCISE] ERROR: Session not found", sessionId);
       return res.status(404).json({ error: 'Session non trouvée' });
     }
 
-    console.log("UPLOAD_EXERCISE_EXTRACTING_TEXT_START");
-    const { text, pages } = await extractTextFromFile(file);
+    console.log("[UPLOAD_EXERCISE] extracting text...");
+    console.time("[UPLOAD_EXERCISE] pdf-parse");
+    const { text, pages } = await Promise.race([
+      extractTextFromFile(file),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("PDF_PARSE_TIMEOUT")), 30000))
+    ]) as { text: string; pages: number };
+    console.timeEnd("[UPLOAD_EXERCISE] pdf-parse");
     
-    // Log the extracted text for debugging
-    console.log('=== EXTRACTED TEXT DEBUG ===');
-    console.log('Character count:', text.length);
-    console.log('Page count:', pages);
-    console.log('First 3000 characters:');
-    console.log(text.slice(0, 3000));
-    console.log('=== END EXTRACTED TEXT DEBUG ===');
+    console.log("[UPLOAD_EXERCISE] extracted:", {
+      textLength: text.length,
+      pageCount: pages,
+      textPreview: text.slice(0, 500)
+    });
+    
+    if (text.length < 50) {
+      console.error("[UPLOAD_EXERCISE] ERROR: Text too short, PDF might be scanned");
+      console.timeEnd("[UPLOAD_EXERCISE] total");
+      return res.status(400).json({ 
+        error: 'Le PDF semble scanné ou sans texte exploitable. Le texte extrait est trop court.' 
+      });
+    }
     
     const doc = {
       id: uuidv4(),
@@ -169,13 +189,24 @@ router.post('/:sessionId/upload-exercise', upload.single('file'), async (req: Re
       createdAt: new Date().toISOString()
     };
 
-    await saveDocumentToSession(doc);
+    console.log("[UPLOAD_EXERCISE] saving document...");
+    console.time("[UPLOAD_EXERCISE] save-db");
+    await Promise.race([
+      saveDocumentToSession(doc),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("DB_SAVE_TIMEOUT")), 10000))
+    ]);
+    console.timeEnd("[UPLOAD_EXERCISE] save-db");
 
-    // Detect questions from text
+    console.log("[UPLOAD_EXERCISE] detecting questions...");
+    console.time("[UPLOAD_EXERCISE] detect-questions");
     const questions = extractQuestionsFromText(text);
+    console.timeEnd("[UPLOAD_EXERCISE] detect-questions");
+    
+    console.log("[UPLOAD_EXERCISE] questions detected:", questions.length);
     
     if (questions.length === 0) {
-      // Return success with warning if no questions detected
+      console.warn("[UPLOAD_EXERCISE] WARNING: No questions detected");
+      console.timeEnd("[UPLOAD_EXERCISE] total");
       return res.json({
         ...doc,
         chars: text.length,
@@ -184,88 +215,42 @@ router.post('/:sessionId/upload-exercise', upload.single('file'), async (req: Re
       });
     }
 
-    // If OpenAI is enabled, rewrite questions for better structure and translate
+    // Prepare questions without blocking on OpenAI translation
     const enhancedQuestions: Array<{ number: number; text: string; cleanedHebrew: string; frenchTranslation: string; frenchUnderstanding: string }> = 
-      questions.map(q => ({ ...q, cleanedHebrew: q.text, frenchTranslation: '', frenchUnderstanding: '' }));
+      questions.map(q => ({ 
+        ...q, 
+        cleanedHebrew: q.text, 
+        frenchTranslation: 'Traduction en cours...', 
+        frenchUnderstanding: '' 
+      }));
     
-    if (isOpenAIEnabled()) {
-      const openai = getOpenAIClient();
-      if (openai) {
-        for (let i = 0; i < enhancedQuestions.length; i++) {
-          const q = enhancedQuestions[i];
-          try {
-            const response = await openai.chat.completions.create({
-              model: 'gpt-4o',
-              messages: [
-                {
-                  role: 'system',
-                  content: `Tu es un assistant qui traite des questions en hébreu.
-                  
-Pour chaque question, retourne un JSON avec:
-{
-  "cleanedHebrew": "question réécrite proprement en hébreu (même sens, formatage propre, sans erreurs)",
-  "frenchTranslation": "traduction française exacte de la question (conserve le sens fiscal/juridique)",
-  "frenchUnderstanding": "explication en français de ce que la question demande"
-}
-
-Règles IMPORTANTES:
-- Conserver le sens exact de la question
-- Améliorer le formatage et la structure
-- Éliminer les artefacts de conversion PDF
-- Traduire la question en français, NE PAS répondre à la question
-- Écrire la traduction française clairement
-- Écrire l'explication française clairement`
-                },
-                {
-                  role: 'user',
-                  content: `Question originale:\n${q.text}\n\nRéécris cette question de manière structurée, traduis-la en français et fournis l'explication en français. Retourne uniquement du JSON valide.`
-                }
-              ],
-              temperature: 0.3,
-              response_format: { type: "json_object" }
-            });
-
-            const content = response.choices[0].message.content || '{}';
-            const parsed = JSON.parse(content);
-            
-            enhancedQuestions[i].cleanedHebrew = parsed.cleanedHebrew || q.text;
-            enhancedQuestions[i].frenchTranslation = parsed.frenchTranslation || 'Traduction indisponible';
-            enhancedQuestions[i].frenchUnderstanding = parsed.frenchUnderstanding || '';
-          } catch (error) {
-            console.error('Error processing question:', error);
-            enhancedQuestions[i].cleanedHebrew = q.text;
-            enhancedQuestions[i].frenchTranslation = 'Traduction indisponible';
-            enhancedQuestions[i].frenchUnderstanding = '';
-          }
-        }
-      } else {
-        // Fallback: set translation as unavailable if OpenAI is not configured
-        for (let i = 0; i < enhancedQuestions.length; i++) {
-          enhancedQuestions[i].frenchTranslation = 'Traduction indisponible';
-        }
-      }
-    } else {
-      // Fallback: set translation as unavailable if OpenAI is not enabled
-      for (let i = 0; i < enhancedQuestions.length; i++) {
-        enhancedQuestions[i].frenchTranslation = 'Traduction indisponible';
-      }
-    }
-    
+    console.log("[UPLOAD_EXERCISE] saving questions...");
+    console.time("[UPLOAD_EXERCISE] save-questions");
     for (const q of enhancedQuestions) {
-      await saveQuestionToSession({
-        id: uuidv4(),
-        sessionId,
-        number: q.number,
-        originalText: q.text,
-        cleanedHebrew: q.cleanedHebrew,
-        frenchTranslation: q.frenchTranslation,
-        frenchUnderstanding: q.frenchUnderstanding,
-        language: 'hebrew',
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
+      await Promise.race([
+        saveQuestionToSession({
+          id: uuidv4(),
+          sessionId,
+          number: q.number,
+          originalText: q.text,
+          cleanedHebrew: q.cleanedHebrew,
+          frenchTranslation: q.frenchTranslation,
+          frenchUnderstanding: q.frenchUnderstanding,
+          language: 'hebrew',
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("DB_SAVE_TIMEOUT")), 5000))
+      ]);
     }
+    console.timeEnd("[UPLOAD_EXERCISE] save-questions");
+
+    console.timeEnd("[UPLOAD_EXERCISE] total");
+    console.log("[UPLOAD_EXERCISE] complete:", {
+      questionsCount: questions.length,
+      docId: doc.id
+    });
 
     res.json({
       ...doc,
@@ -274,7 +259,30 @@ Règles IMPORTANTES:
       questionsDetected: questions.length
     });
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de l\'upload de l\'exercice' });
+    console.error("[UPLOAD_EXERCISE] ERROR:", error);
+    console.timeEnd("[UPLOAD_EXERCISE] total");
+    
+    if (error instanceof Error && error.message === "UPLOAD_EXERCISE_TIMEOUT") {
+      return res.status(504).json({ 
+        error: 'Le traitement prend trop de temps. Le PDF est peut-être très volumineux.' 
+      });
+    }
+    
+    if (error instanceof Error && error.message === "PDF_PARSE_TIMEOUT") {
+      return res.status(504).json({ 
+        error: 'L\'extraction du texte prend trop de temps. Le PDF est peut-être scanné.' 
+      });
+    }
+    
+    if (error instanceof Error && error.message === "DB_SAVE_TIMEOUT") {
+      return res.status(504).json({ 
+        error: 'La sauvegarde en base de données prend trop de temps.' 
+      });
+    }
+    
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Erreur lors de l\'upload de l\'exercice' 
+    });
   }
 });
 
@@ -326,11 +334,150 @@ router.post('/:sessionId/questions/split-smart', async (req: Request, res: Respo
 
     res.json({
       success: true,
-      questionsDetected: questions.length,
-      questions: questions
+      questionsCount: questions.length
     });
   } catch (error) {
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors du découpage des questions' });
+    console.error("POST /api/sessions/:sessionId/questions/split-smart failed:", error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Erreur lors du découpage intelligent'
+    });
+  }
+});
+
+// POST /api/sessions/:sessionId/questions/translate-all - Translate all questions
+router.post('/:sessionId/questions/translate-all', async (req: Request, res: Response) => {
+  console.log("[TRANSLATE_ALL] start");
+  console.time("[TRANSLATE_ALL] total");
+  
+  try {
+    const { sessionId } = req.params;
+    
+    const session = await getSession(sessionId);
+    if (!session) {
+      console.error("[TRANSLATE_ALL] ERROR: Session not found", sessionId);
+      return res.status(404).json({ error: 'Session non trouvée' });
+    }
+
+    const data = await getSessionData(sessionId);
+    const questions = data.questions.filter((q: any) => 
+      !q.french_translation || q.french_translation === 'Traduction en cours...' || q.french_translation === 'Traduction indisponible'
+    );
+
+    console.log("[TRANSLATE_ALL] questions to translate:", questions.length);
+
+    if (!isOpenAIEnabled()) {
+      console.warn("[TRANSLATE_ALL] OpenAI not enabled");
+      console.timeEnd("[TRANSLATE_ALL] total");
+      return res.json({ 
+        success: false, 
+        error: 'OpenAI non configuré' 
+      });
+    }
+
+    const openai = getOpenAIClient();
+    if (!openai) {
+      console.error("[TRANSLATE_ALL] ERROR: OpenAI client not available");
+      console.timeEnd("[TRANSLATE_ALL] total");
+      return res.json({ 
+        success: false, 
+        error: 'Client OpenAI non disponible' 
+      });
+    }
+
+    const translatedQuestions = [];
+    
+    for (let i = 0; i < questions.length; i++) {
+      const q = questions[i];
+      console.log(`[TRANSLATE_ALL] translating question ${i + 1}/${questions.length}`);
+      console.time(`[TRANSLATE_ALL] q-${i + 1}`);
+      
+      try {
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("TRANSLATE_TIMEOUT")), 15000)
+        );
+
+        const translatePromise = openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: `Tu es un assistant qui traite des questions en hébreu.
+                
+Pour chaque question, retourne un JSON avec:
+{
+  "cleanedHebrew": "question réécrite proprement en hébreu (même sens, formatage propre, sans erreurs)",
+  "frenchTranslation": "traduction française exacte de la question (conserve le sens fiscal/juridique)",
+  "frenchUnderstanding": "explication en français de ce que la question demande"
+}
+
+Règles IMPORTANTES:
+- Conserver le sens exact de la question
+- Améliorer le formatage et la structure
+- Éliminer les artefacts de conversion PDF
+- Traduire la question en français, NE PAS répondre à la question
+- Écrire la traduction française clairement
+- Écrire l'explication française clairement`
+            },
+            {
+              role: 'user',
+              content: `Question originale:\n${q.original_text}\n\nRéécris cette question de manière structurée, traduis-la en français et fournis l'explication en français. Retourne uniquement du JSON valide.`
+            }
+          ],
+          temperature: 0.3,
+          response_format: { type: "json_object" }
+        });
+
+        const response = await Promise.race([translatePromise, timeoutPromise]);
+        const content = response.choices[0].message.content || '{}';
+        const parsed = JSON.parse(content);
+        
+        const cleanedHebrew = parsed.cleanedHebrew || q.original_text;
+        const frenchTranslation = parsed.frenchTranslation || 'Traduction française indisponible';
+        const frenchUnderstanding = parsed.frenchUnderstanding || '';
+
+        // Update question in DB
+        await updateQuestionTranslation(q.id, cleanedHebrew, frenchTranslation, frenchUnderstanding);
+        
+        translatedQuestions.push({
+          id: q.id,
+          cleanedHebrew,
+          frenchTranslation,
+          frenchUnderstanding
+        });
+        
+        console.timeEnd(`[TRANSLATE_ALL] q-${i + 1}`);
+      } catch (error) {
+        console.error(`[TRANSLATE_ALL] ERROR translating question ${i + 1}:`, error);
+        console.timeEnd(`[TRANSLATE_ALL] q-${i + 1}`);
+        
+        // Fallback: mark as unavailable
+        await updateQuestionTranslation(q.id, q.original_text, 'Traduction française indisponible', '');
+        
+        translatedQuestions.push({
+          id: q.id,
+          cleanedHebrew: q.original_text,
+          frenchTranslation: 'Traduction française indisponible',
+          frenchUnderstanding: ''
+        });
+      }
+    }
+
+    console.timeEnd("[TRANSLATE_ALL] total");
+    console.log("[TRANSLATE_ALL] complete:", translatedQuestions.length);
+
+    res.json({
+      success: true,
+      translatedCount: translatedQuestions.length,
+      questions: translatedQuestions
+    });
+  } catch (error) {
+    console.error("[TRANSLATE_ALL] ERROR:", error);
+    console.timeEnd("[TRANSLATE_ALL] total");
+    res.status(500).json({ 
+      success: false,
+      error: error instanceof Error ? error.message : 'Erreur lors de la traduction' 
+    });
   }
 });
 
@@ -1107,8 +1254,9 @@ router.post('/:sessionId/final', async (req: Request, res: Response) => {
 
 // Helper function to extract questions with improved Hebrew detection
 function extractQuestionsFromText(text: string): Array<{ number: number; text: string; source: string }> {
-  console.log('=== EXTRACT QUESTIONS DEBUG ===');
-  console.log('Text length:', text.length);
+  console.log("[EXTRACT_QUESTIONS] start");
+  console.time("[EXTRACT_QUESTIONS] total");
+  console.log("[EXTRACT_QUESTIONS] text length:", text.length);
   
   const normalized = text
     .replace(/\r/g, "\n")
@@ -1120,39 +1268,45 @@ function extractQuestionsFromText(text: string): Array<{ number: number; text: s
   const stopIndex = normalized.indexOf(stopMarker);
   const textToProcess = stopIndex !== -1 ? normalized.substring(0, stopIndex) : normalized;
 
-  console.log('Text to process length:', textToProcess.length);
+  console.log("[EXTRACT_QUESTIONS] text to process length:", textToProcess.length);
 
-  // Log extracted text to debug file
-  const fs = require('fs');
-  const path = require('path');
-  const debugDir = path.join(process.cwd(), 'debug');
-  const debugFile = path.join(debugDir, 'extracted-exercise.txt');
-  
-  try {
-    if (!fs.existsSync(debugDir)) {
-      fs.mkdirSync(debugDir, { recursive: true });
+  // Only write debug file in development, not production
+  if (process.env.NODE_ENV !== 'production') {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const debugDir = path.join(process.cwd(), 'debug');
+      const debugFile = path.join(debugDir, 'extracted-exercise.txt');
+      
+      if (!fs.existsSync(debugDir)) {
+        fs.mkdirSync(debugDir, { recursive: true });
+      }
+      fs.writeFileSync(debugFile, textToProcess, 'utf8');
+      console.log("[EXTRACT_QUESTIONS] debug file written");
+    } catch (error) {
+      console.log("[EXTRACT_QUESTIONS] could not write debug file:", error);
     }
-    fs.writeFileSync(debugFile, textToProcess, 'utf8');
-    console.log('Extracted text logged to:', debugFile);
-  } catch (error) {
-    console.log('Could not write debug file:', error);
   }
 
   // Improved question detection using marker-based splitting
+  console.time("[EXTRACT_QUESTIONS] split-markers");
   const questions = splitByQuestionMarkers(textToProcess);
+  console.timeEnd("[EXTRACT_QUESTIONS] split-markers");
   
-  console.log('Questions detected:', questions.length);
+  console.log("[EXTRACT_QUESTIONS] questions detected:", questions.length);
   
   if (questions.length > 0) {
-    console.log('=== EXTRACT QUESTIONS DEBUG END ===');
+    console.timeEnd("[EXTRACT_QUESTIONS] total");
     return questions;
   }
 
   // Fallback: split by instruction paragraphs
+  console.time("[EXTRACT_QUESTIONS] split-paragraphs");
   const paragraphQuestions = splitByInstructionParagraphs(textToProcess);
-  console.log('Paragraph questions detected:', paragraphQuestions.length);
+  console.timeEnd("[EXTRACT_QUESTIONS] split-paragraphs");
+  console.log("[EXTRACT_QUESTIONS] paragraph questions detected:", paragraphQuestions.length);
   
-  console.log('=== EXTRACT QUESTIONS DEBUG END ===');
+  console.timeEnd("[EXTRACT_QUESTIONS] total");
   return paragraphQuestions;
 }
 

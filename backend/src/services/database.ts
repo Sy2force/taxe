@@ -757,6 +757,33 @@ export async function saveDocumentChunkToSession(chunk: any) {
   }
 }
 
+export async function updateQuestionTranslation(questionId: string, cleanedHebrew: string, frenchTranslation: string, frenchUnderstanding: string) {
+  const db = await getDatabase();
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  if (isProduction && isPostgreSQL(db)) {
+    const pool = db as Pool;
+    const client = await pool.connect();
+    try {
+      await client.query(`
+        UPDATE questions 
+        SET cleaned_hebrew = $1, french_translation = $2, french_understanding = $3, updated_at = NOW()
+        WHERE id = $4
+      `, [cleanedHebrew, frenchTranslation, frenchUnderstanding, questionId]);
+    } finally {
+      client.release();
+    }
+  } else {
+    const sqlite = db as Database.Database;
+    const stmt = sqlite.prepare(`
+      UPDATE questions 
+      SET cleaned_hebrew = ?, french_translation = ?, french_understanding = ?, updated_at = ?
+      WHERE id = ?
+    `);
+    stmt.run(cleanedHebrew, frenchTranslation, frenchUnderstanding, new Date().toISOString(), questionId);
+  }
+}
+
 export async function getSessionData(sessionId: string) {
   const db = await getDatabase();
   const isProduction = process.env.NODE_ENV === 'production';

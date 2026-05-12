@@ -45,17 +45,26 @@ export async function extractTextFromFile(file: any): Promise<{ text: string; pa
 }
 
 async function extractFromPDF(filePath: string): Promise<{ text: string; pages: number }> {
+  console.log("[PDF] parsing started");
   let data: { text: string; numpages: number };
   try {
     const dataBuffer = await fs.readFile(filePath);
+    console.log("[PDF] file size:", dataBuffer.length);
     data = await pdf(dataBuffer);
-  } catch {
+    console.log("[PDF] pages:", data.numpages);
+    console.log("[PDF] text length:", data.text.length);
+  } catch (error) {
+    console.error("[PDF] parse error:", error);
     throw new Error('Impossible de lire ce PDF. Il est peut-être protégé, corrompu ou mal encodé.');
   }
+  
   const text = data.text.trim();
   if (text.length === 0) {
+    console.error("[PDF] empty text - likely scanned PDF");
     throw new Error('Ce PDF semble être scanné ou composé d\'images. Aucun texte sélectionnable n\'a été trouvé. Utilisez un PDF texte ou ajoutez une fonction OCR.');
   }
+  
+  console.log("[PDF] parsing complete");
   return { text, pages: data.numpages };
 }
 
