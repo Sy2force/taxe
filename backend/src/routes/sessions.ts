@@ -1049,7 +1049,7 @@ function extractQuestionsFromText(text: string): Array<{ number: number; text: s
 
   console.log('Text to process length:', textToProcess.length);
 
-  // Hebrew question patterns
+  // Hebrew question patterns - more flexible
   const patterns = [
     // שאלה 1, שאלה א, שאלה מספר 1
     /(?:^|\n)\s*(?:שאלה|שאלה מספר)\s*([0-9]+|[א-ת][׳']?)[:.)\-\s]+([\s\S]*?)(?=\n\s*(?:שאלה|שאלה מספר)\s*(?:[0-9]+|[א-ת][׳']?)[:.)\-\s]+|$)/g,
@@ -1072,7 +1072,8 @@ function extractQuestionsFromText(text: string): Array<{ number: number; text: s
       const body = match[2]?.trim();
       console.log('Match found, body length:', body?.length);
       
-      if (body && body.length > 30) {
+      // Reduced minimum length from 30 to 10 to catch shorter questions
+      if (body && body.length > 10) {
         questions.push({
           number: questions.length + 1,
           text: body,
@@ -1085,7 +1086,7 @@ function extractQuestionsFromText(text: string): Array<{ number: number; text: s
     if (questions.length > 0) break;
   }
 
-  // Fallback: intelligent paragraph splitting
+  // Fallback: intelligent paragraph splitting - more permissive
   if (questions.length === 0) {
     console.log('No questions found with regex, trying intelligent paragraph splitting...');
     
@@ -1093,9 +1094,9 @@ function extractQuestionsFromText(text: string): Array<{ number: number; text: s
       .split(/\n\s*\n/)
       .map(p => p.trim())
       .filter(p =>
-        p.length > 80 &&
-        /[א-ת]/.test(p) &&
-        /(נדרש|הסבר|חשב|נמק|פרט|קבע|ציין|דון|\?)/.test(p)
+        p.length > 20 && // Reduced from 80 to 20
+        /[א-ת]/.test(p)
+        // Removed keyword filter to catch more paragraphs
       );
 
     console.log('Paragraphs found:', paragraphs.length);
