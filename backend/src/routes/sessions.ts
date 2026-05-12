@@ -303,7 +303,7 @@ router.post('/:sessionId/questions/split-smart', async (req: Request, res: Respo
       return res.status(400).json({ error: 'Aucun document d\'exercice trouvé' });
     }
 
-    const text = doc.extractedText || '';
+    const text = doc.extractedText || doc.extracted_text || '';
     if (!text) {
       return res.status(400).json({ error: 'Aucun texte extrait' });
     }
@@ -314,9 +314,9 @@ router.post('/:sessionId/questions/split-smart', async (req: Request, res: Respo
     // Clear existing questions
     await deleteQuestionsBySession(sessionId);
 
-    // Save new questions
-    for (const q of questions) {
-      await saveQuestionToSession({
+    // Save new questions in parallel for speed
+    await Promise.all(questions.map(q =>
+      saveQuestionToSession({
         id: uuidv4(),
         sessionId,
         number: q.number,
@@ -327,8 +327,8 @@ router.post('/:sessionId/questions/split-smart', async (req: Request, res: Respo
         status: 'pending',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
-      });
-    }
+      })
+    ));
 
     await refreshSessionData(sessionId);
 
