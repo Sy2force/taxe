@@ -322,7 +322,14 @@ export default function ExercisePage() {
           onMouseLeave={e => { if (!uploading) (e.currentTarget as HTMLElement).style.border = '1.5px dashed rgba(255,255,255,0.08)'; }}
         >
           <input ref={fileRef} type="file" accept=".pdf" className="hidden"
-            onChange={e => e.target.files?.[0] && handleUpload(e.target.files[0])} />
+            onChange={e => {
+              const file = e.target.files?.[0];
+              if (file) {
+                handleUpload(file);
+                // Reset input value to allow re-selecting same file
+                e.target.value = '';
+              }
+            }} />
           {uploading ? (
             <div className="flex flex-col items-center gap-3">
               <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
