@@ -26,6 +26,7 @@ export default function ExercisePage() {
   } = useSessionContext();
 
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');
   const [extractedText, setExtractedText] = useState('');
   const [questions, setQuestions] = useState<DetectedQuestion[]>([]);
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -70,15 +71,26 @@ export default function ExercisePage() {
     });
     
     setUploading(true);
+    setUploadProgress('Import du fichier...');
     setStatus('idle');
     setErrorMsg('');
     setShowRawText(false);
     setShowManualMode(false);
+    
+    // Show warning if upload takes longer than 30 seconds
+    const slowWarning = setTimeout(() => {
+      setUploadProgress('Analyse toujours en cours, cela peut prendre un peu de temps sur Render...');
+    }, 30000);
+    
     try {
+      setUploadProgress('Extraction du texte...');
       // Use SessionContext to upload to backend (ensureSession is called internally)
       const uploadData = await uploadExercise(f);
       
+      clearTimeout(slowWarning);
       console.log('HANDLE_UPLOAD_SUCCESS', uploadData);
+      
+      setUploadProgress('Détection des questions...');
       
       // Use the returned data directly instead of relying on sessionData
       const text = uploadData.extracted_text || uploadData.extractedText || '';
@@ -88,10 +100,12 @@ export default function ExercisePage() {
         throw new Error('Le texte du document n\'a pas pu être extrait. Convertissez le fichier en .docx ou en PDF avec texte sélectionnable.');
       }
       
+      setUploadProgress('Sauvegarde...');
       setExtractedText(text);
       setManualText(text);
       setFileInfo({ name: f.name, chars: text.length });
       setStatus('success');
+      setUploadProgress('');
       
       // Log for debugging
       console.log('Upload successful:', {
@@ -99,12 +113,16 @@ export default function ExercisePage() {
         questionsDetected
       });
     } catch (err) {
+      clearTimeout(slowWarning);
       const errorMessage = err instanceof Error ? err.message : 'Erreur inconnue';
       console.error('Upload error:', err);
       setErrorMsg(errorMessage);
       setStatus('error');
+      setUploadProgress('');
     } finally {
+      clearTimeout(slowWarning);
       setUploading(false);
+      setUploadProgress('');
     }
   };
 
@@ -311,8 +329,8 @@ export default function ExercisePage() {
                 style={{ background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.25)' }}>
                 <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
               </div>
-              <p className="text-[14px] font-medium text-text-secondary">Analyse du document…</p>
-              <p className="text-[12px] text-text-muted">Extraction du texte et détection des questions</p>
+              <p className="text-[14px] font-medium text-text-secondary">{uploadProgress || 'Analyse du document…'}</p>
+              <p className="text-[12px] text-text-muted">Veuillez patienter</p>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-3">
@@ -341,15 +359,32 @@ export default function ExercisePage() {
 
       {/* Error */}
       {status === 'error' && (
-        <div className="flex items-start gap-3 p-4 rounded-2xl mb-6"
+        <div className="flex flex-col gap-3 p-4 rounded-2xl mb-6"
           style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.18)' }}>
-          <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p className="text-[13px] font-medium text-red-400 mb-0.5">Erreur d'import</p>
-            <p className="text-[12px] text-red-400/70">{errorMsg}</p>
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-[13px] font-medium text-red-400 mb-0.5">Erreur d'import</p>
+              <p className="text-[12px] text-red-400/70">{errorMsg}</p>
+            </div>
           </div>
-          <button onClick={() => setStatus('idle')}
-            className="text-[11px] text-red-400/60 hover:text-red-400 transition-colors underline">Réessayer</button>
+          <div className="flex gap-2 ml-7">
+            <button onClick={() => setStatus('idle')}
+              className="text-[11px] px-3 py-1.5 rounded-lg transition-colors"
+              style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)', color: '#a5b4fc' }}>
+              Réessayer
+            </button>
+            <button onClick={() => { setStatus('idle'); setShowManualMode(true); }}
+              className="text-[11px] px-3 py-1.5 rounded-lg transition-colors"
+              style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', color: '#fbbf24' }}>
+              Découper manuellement
+            </button>
+            <button onClick={() => console.log('Voir logs - check browser console')}
+              className="text-[11px] px-3 py-1.5 rounded-lg transition-colors"
+              style={{ background: 'rgba(39,39,42,0.8)', border: '1px solid rgba(255,255,255,0.08)', color: '#a1a1aa' }}>
+              Voir logs
+            </button>
+          </div>
         </div>
       )}
 
