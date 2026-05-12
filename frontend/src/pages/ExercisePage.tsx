@@ -21,7 +21,8 @@ export default function ExercisePage() {
     sessionData,
     isReadOnly,
     uploadExercise,
-    validateQuestions
+    validateQuestions,
+    refreshSession
   } = useSessionContext();
 
   const [uploading, setUploading] = useState(false);
@@ -195,6 +196,49 @@ export default function ExercisePage() {
     setShowManualMode(false);
   };
 
+  const handleSmartSplit = async () => {
+    if (!sessionId) return;
+    
+    setUploading(true);
+    try {
+      const response = await fetch(`http://localhost:5051/api/sessions/${sessionId}/questions/split-smart`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expectedCount: 8 })
+      });
+
+      if (!response.ok) {
+        throw new Error('Erreur lors du découpage intelligent');
+      }
+
+      const data = await response.json();
+      await refreshSession();
+      
+      // Update UI with new questions
+      if (data.questions) {
+        const detected = data.questions.map((q: any, i: number) => ({
+          id: i + 1,
+          originalHebrew: q.text,
+          cleanedHebrew: q.text,
+          frenchTranslation: '',
+          frenchUnderstanding: '',
+          points: '',
+          answerLimitLines: 15,
+          bullets: [],
+          status: 'detected' as const
+        }));
+        setQuestions(detected);
+      }
+      
+      setStatus('success');
+    } catch (error) {
+      console.error('Smart split error:', error);
+      setErrorMsg('Erreur lors du découpage intelligent');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const isHebrew = (text: string) => /[\u0590-\u05FF]/.test(text);
 
   return (
@@ -349,6 +393,24 @@ export default function ExercisePage() {
                 <button onClick={() => setShowManualMode(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
                   style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.25)', color: '#6ee7b7' }}>
                   <Scissors className="w-3.5 h-3.5" /> Découper manuellement
+                </button>
+                <button onClick={handleSmartSplit} disabled={uploading} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                  style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)', color: '#a5b4fc' }}>
+                  {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Scissors className="w-3.5 h-3.5" />} Découper en 8 questions
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Show warning if fewer than 8 questions detected */}
+          {questions.length > 0 && questions.length < 8 && (
+            <div className="mt-4 p-4 rounded-xl" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
+              <p className="text-[12px] font-medium text-amber-400 mb-2">Seulement {questions.length} question(s) détectée(s)</p>
+              <p className="text-[11px] text-amber-400/70 mb-3">Le système a détecté moins de questions que prévu. Vous pouvez utiliser le découpage intelligent pour séparer en 8 questions.</p>
+              <div className="flex gap-2">
+                <button onClick={handleSmartSplit} disabled={uploading} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all"
+                  style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)', color: '#a5b4fc' }}>
+                  {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Scissors className="w-3.5 h-3.5" />} Découper en 8 questions automatiquement
                 </button>
               </div>
             </div>

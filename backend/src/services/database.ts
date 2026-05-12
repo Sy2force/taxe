@@ -196,6 +196,19 @@ function initSQLite(db: Database.Database) {
   } catch (error) {
     console.log('ℹ️  french_understanding column already exists (SQLite)');
   }
+
+  // Migration: Add french_translation column if it doesn't exist
+  try {
+    const columns = db.prepare("PRAGMA table_info(questions)").all() as any[];
+    const hasFrenchTranslation = columns.some((col: any) => col.name === 'french_translation');
+    
+    if (!hasFrenchTranslation) {
+      db.exec('ALTER TABLE questions ADD COLUMN french_translation TEXT');
+      console.log('✅ Migration: french_translation column added to questions table (SQLite)');
+    }
+  } catch (error) {
+    console.log('ℹ️  french_translation column already exists (SQLite)');
+  }
 }
 
 async function initPostgreSQL(pool: Pool) {
@@ -342,6 +355,24 @@ async function initPostgreSQL(pool: Pool) {
     console.log('✅ Migration: french_understanding column added to questions table');
   } catch (error) {
     console.log('ℹ️  french_understanding column already exists or migration not needed');
+  }
+
+  // Migration: Add french_translation column if it doesn't exist
+  try {
+    await pool.query(`
+      DO $$
+      BEGIN
+          IF NOT EXISTS (
+              SELECT 1 FROM information_schema.columns 
+              WHERE table_name = 'questions' AND column_name = 'french_translation'
+          ) THEN
+              ALTER TABLE questions ADD COLUMN french_translation TEXT;
+          END IF;
+      END $$
+    `);
+    console.log('✅ Migration: french_translation column added to questions table');
+  } catch (error) {
+    console.log('ℹ️  french_translation column already exists or migration not needed');
   }
 
   await pool.query(`

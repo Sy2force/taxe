@@ -184,9 +184,9 @@ router.post('/:sessionId/upload-exercise', upload.single('file'), async (req: Re
       });
     }
 
-    // If OpenAI is enabled, rewrite questions for better structure
-    const enhancedQuestions: Array<{ number: number; text: string; cleanedHebrew: string; frenchUnderstanding: string }> = 
-      questions.map(q => ({ ...q, cleanedHebrew: q.text, frenchUnderstanding: '' }));
+    // If OpenAI is enabled, rewrite questions for better structure and translate
+    const enhancedQuestions: Array<{ number: number; text: string; cleanedHebrew: string; frenchTranslation: string; frenchUnderstanding: string }> = 
+      questions.map(q => ({ ...q, cleanedHebrew: q.text, frenchTranslation: '', frenchUnderstanding: '' }));
     
     if (isOpenAIEnabled()) {
       const openai = getOpenAIClient();
@@ -199,23 +199,26 @@ router.post('/:sessionId/upload-exercise', upload.single('file'), async (req: Re
               messages: [
                 {
                   role: 'system',
-                  content: `Tu es un assistant qui réécrit des questions en hébreu de manière structurée et claire.
+                  content: `Tu es un assistant qui traite des questions en hébreu.
                   
 Pour chaque question, retourne un JSON avec:
 {
   "cleanedHebrew": "question réécrite proprement en hébreu (même sens, formatage propre, sans erreurs)",
+  "frenchTranslation": "traduction française exacte de la question (conserve le sens fiscal/juridique)",
   "frenchUnderstanding": "explication en français de ce que la question demande"
 }
 
-Règles:
+Règles IMPORTANTES:
 - Conserver le sens exact de la question
 - Améliorer le formatage et la structure
 - Éliminer les artefacts de conversion PDF
+- Traduire la question en français, NE PAS répondre à la question
+- Écrire la traduction française clairement
 - Écrire l'explication française clairement`
                 },
                 {
                   role: 'user',
-                  content: `Question originale:\n${q.text}\n\nRéécris cette question de manière structurée et fournis l'explication en français. Retourne uniquement du JSON valide.`
+                  content: `Question originale:\n${q.text}\n\nRéécris cette question de manière structurée, traduis-la en français et fournis l'explication en français. Retourne uniquement du JSON valide.`
                 }
               ],
               temperature: 0.3,
@@ -226,13 +229,25 @@ Règles:
             const parsed = JSON.parse(content);
             
             enhancedQuestions[i].cleanedHebrew = parsed.cleanedHebrew || q.text;
+            enhancedQuestions[i].frenchTranslation = parsed.frenchTranslation || 'Traduction indisponible';
             enhancedQuestions[i].frenchUnderstanding = parsed.frenchUnderstanding || '';
           } catch (error) {
-            console.error('Error rewriting question:', error);
+            console.error('Error processing question:', error);
             enhancedQuestions[i].cleanedHebrew = q.text;
+            enhancedQuestions[i].frenchTranslation = 'Traduction indisponible';
             enhancedQuestions[i].frenchUnderstanding = '';
           }
         }
+      } else {
+        // Fallback: set translation as unavailable if OpenAI is not configured
+        for (let i = 0; i < enhancedQuestions.length; i++) {
+          enhancedQuestions[i].frenchTranslation = 'Traduction indisponible';
+        }
+      }
+    } else {
+      // Fallback: set translation as unavailable if OpenAI is not enabled
+      for (let i = 0; i < enhancedQuestions.length; i++) {
+        enhancedQuestions[i].frenchTranslation = 'Traduction indisponible';
       }
     }
     
@@ -243,6 +258,7 @@ Règles:
         number: q.number,
         originalText: q.text,
         cleanedHebrew: q.cleanedHebrew,
+        frenchTranslation: q.frenchTranslation,
         frenchUnderstanding: q.frenchUnderstanding,
         language: 'hebrew',
         status: 'pending',
@@ -259,6 +275,62 @@ Règles:
     });
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors de l\'upload de l\'exercice' });
+  }
+});
+
+// POST /api/sessions/:sessionId/questions/split-smart - Smart split questions
+router.post('/:sessionId/questions/split-smart', async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    const { expectedCount = 8 } = req.body;
+    
+    const session = await getSession(sessionId);
+    if (!session) {
+      return res.status(404).json({ error: 'Session non trouvée' });
+    }
+
+    // Get the exercise document
+    const doc = await getDocumentBySession(sessionId, 'exercise');
+    if (!doc) {
+      return res.status(400).json({ error: 'Aucun document d\'exercice trouvé' });
+    }
+
+    const text = doc.extractedText || '';
+    if (!text) {
+      return res.status(400).json({ error: 'Aucun texte extrait' });
+    }
+
+    // Smart split into expectedCount questions
+    const questions = smartSplitIntoQuestions(text, expectedCount);
+
+    // Clear existing questions
+    await deleteQuestionsBySession(sessionId);
+
+    // Save new questions
+    for (const q of questions) {
+      await saveQuestionToSession({
+        id: uuidv4(),
+        sessionId,
+        number: q.number,
+        originalText: q.text,
+        cleanedHebrew: q.text,
+        frenchUnderstanding: '',
+        language: 'hebrew',
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    }
+
+    await refreshSessionData(sessionId);
+
+    res.json({
+      success: true,
+      questionsDetected: questions.length,
+      questions: questions
+    });
+  } catch (error) {
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Erreur lors du découpage des questions' });
   }
 });
 
@@ -1142,6 +1214,105 @@ function splitByInstructionParagraphs(text: string): Array<{ number: number; tex
     text: p,
     source: "auto-paragraph"
   }));
+}
+
+function smartSplitIntoQuestions(text: string, expectedCount: number): Array<{ number: number; text: string }> {
+  const instructionKeywords = [
+    'נדרש', 'הסבר', 'חשב', 'נמק', 'פרט', 'קבע', 'ציין', 'דון', 
+    'נדרשת', 'הסבירו', 'חשבו', 'נמקו', 'קבעו', 'פרטו', 'ציינו'
+  ];
+
+  // Find all instruction keyword positions
+  const keywordPositions: Array<{ index: number; keyword: string }> = [];
+  instructionKeywords.forEach(keyword => {
+    let pos = text.indexOf(keyword);
+    while (pos !== -1) {
+      keywordPositions.push({ index: pos, keyword });
+      pos = text.indexOf(keyword, pos + 1);
+    }
+  });
+
+  // Sort by position
+  keywordPositions.sort((a, b) => a.index - b.index);
+
+  // If we have enough keyword positions, use them as split points
+  if (keywordPositions.length >= expectedCount) {
+    const questions: Array<{ number: number; text: string }> = [];
+    for (let i = 0; i < expectedCount; i++) {
+      const start = keywordPositions[i].index;
+      const end = i < expectedCount - 1 ? keywordPositions[i + 1].index : text.length;
+      let block = text.slice(start, end).trim();
+      
+      if (block.length > 50 && /[א-ת]/.test(block)) {
+        questions.push({
+          number: i + 1,
+          text: block
+        });
+      }
+    }
+    return questions;
+  }
+
+  // Fallback: split text into equal parts based on expectedCount
+  const partLength = Math.floor(text.length / expectedCount);
+  const questions: Array<{ number: number; text: string }> = [];
+  
+  for (let i = 0; i < expectedCount; i++) {
+    const start = i * partLength;
+    const end = i === expectedCount - 1 ? text.length : (i + 1) * partLength;
+    let block = text.slice(start, end).trim();
+    
+    // Adjust to start at a newline for cleaner splits
+    if (i > 0) {
+      const newlineIndex = block.indexOf('\n');
+      if (newlineIndex !== -1 && newlineIndex < 100) {
+        block = block.slice(newlineIndex + 1).trim();
+      }
+    }
+    
+    if (block.length > 50 && /[א-ת]/.test(block)) {
+      questions.push({
+        number: i + 1,
+        text: block
+      });
+    }
+  }
+  
+  return questions;
+}
+
+async function getDocumentBySession(sessionId: string, type: string) {
+  const db = await getDatabase();
+  if ('query' in db) {
+    // PostgreSQL
+    const result = await db.query(
+      'SELECT * FROM documents WHERE session_id = $1 AND type = $2 ORDER BY created_at DESC LIMIT 1',
+      [sessionId, type]
+    );
+    return result.rows[0] || null;
+  } else {
+    // SQLite
+    const doc = db.prepare(
+      'SELECT * FROM documents WHERE session_id = ? AND type = ? ORDER BY created_at DESC LIMIT 1'
+    ).get(sessionId, type);
+    return doc || null;
+  }
+}
+
+async function deleteQuestionsBySession(sessionId: string) {
+  const db = await getDatabase();
+  if ('query' in db) {
+    // PostgreSQL
+    await db.query('DELETE FROM questions WHERE session_id = $1', [sessionId]);
+  } else {
+    // SQLite
+    db.prepare('DELETE FROM questions WHERE session_id = ?').run(sessionId);
+  }
+}
+
+async function refreshSessionData(sessionId: string) {
+  // This is a placeholder - session data will be refreshed on next API call
+  // The frontend will call the session endpoint to get updated data
 }
 
 // Helper function to generate answer with chunks (now returns suggestions, not final answers)
