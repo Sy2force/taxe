@@ -38,6 +38,15 @@ export default function ExercisePage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
+  // Warm up backend on mount (avoid cold start delay on Render free tier)
+  useEffect(() => {
+    const API_BASE_URL = import.meta.env.VITE_API_URL;
+    if (!API_BASE_URL) return;
+    fetch(`${API_BASE_URL}/api/health`, { method: 'GET' })
+      .then(() => console.log('[WARMUP] backend ready'))
+      .catch(err => console.log('[WARMUP] backend wakeup ping failed (will retry on upload)', err));
+  }, []);
+
   // Load questions from session data when available
   useEffect(() => {
     if (sessionData && sessionData.questions.length > 0) {
