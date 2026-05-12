@@ -1033,7 +1033,7 @@ router.post('/:sessionId/final', async (req: Request, res: Response) => {
   }
 });
 
-// Helper function to extract questions with improved Hebrew detection and fallback
+// Helper function to extract questions with improved Hebrew detection
 function extractQuestionsFromText(text: string): Array<{ number: number; text: string; source: string }> {
   console.log('=== EXTRACT QUESTIONS DEBUG ===');
   console.log('Text length:', text.length);
@@ -1050,68 +1050,98 @@ function extractQuestionsFromText(text: string): Array<{ number: number; text: s
 
   console.log('Text to process length:', textToProcess.length);
 
-  // Hebrew question patterns - more flexible
-  const patterns = [
-    // שאלה 1, שאלה א, שאלה מספר 1
-    /(?:^|\n)\s*(?:שאלה|שאלה מספר)\s*([0-9]+|[א-ת][׳']?)[:.)\-\s]+([\s\S]*?)(?=\n\s*(?:שאלה|שאלה מספר)\s*(?:[0-9]+|[א-ת][׳']?)[:.)\-\s]+|$)/g,
-    // 1. 1) 
-    /(?:^|\n)\s*([0-9]+)[.)]\s+([\s\S]*?)(?=\n\s*[0-9]+[.)]\s+|$)/g,
-    // א. א)
-    /(?:^|\n)\s*([א-ת][׳']?)[.)]\s+([\s\S]*?)(?=\n\s*[א-ת][׳']?[.)]\s+|$)/g,
-    // סעיף א, חלק א
-    /(?:^|\n)\s*(?:סעיף|חלק)\s*([א-ת][׳']?|[0-9]+)[:.)\-\s]+([\s\S]*?)(?=\n\s*(?:סעיף|חלק)\s*(?:[א-ת][׳']?|[0-9]+)[:.)\-\s]+|$)/g,
-    // Question 1
-    /(?:^|\n)\s*Question\s*([0-9]+)[:.)\-\s]+([\s\S]*?)(?=\n\s*Question\s*[0-9]+[:.)\-\s]+|$)/gi
-  ];
-
-  const questions: Array<{ number: number; text: string; source: string }> = [];
-
-  for (const pattern of patterns) {
-    console.log('Trying pattern:', pattern);
-    let match;
-    while ((match = pattern.exec(textToProcess)) !== null) {
-      const body = match[2]?.trim();
-      console.log('Match found, body length:', body?.length);
-      
-      // Reduced minimum length from 30 to 10 to catch shorter questions
-      if (body && body.length > 10) {
-        questions.push({
-          number: questions.length + 1,
-          text: body,
-          source: "auto-regex"
-        });
-      }
+  // Log extracted text to debug file
+  const fs = require('fs');
+  const path = require('path');
+  const debugDir = path.join(process.cwd(), 'debug');
+  const debugFile = path.join(debugDir, 'extracted-exercise.txt');
+  
+  try {
+    if (!fs.existsSync(debugDir)) {
+      fs.mkdirSync(debugDir, { recursive: true });
     }
-
-    console.log('Pattern found', questions.length, 'questions');
-    if (questions.length > 0) break;
+    fs.writeFileSync(debugFile, textToProcess, 'utf8');
+    console.log('Extracted text logged to:', debugFile);
+  } catch (error) {
+    console.log('Could not write debug file:', error);
   }
 
-  // Fallback: intelligent paragraph splitting - more permissive
-  if (questions.length === 0) {
-    console.log('No questions found with regex, trying intelligent paragraph splitting...');
-    
-    const paragraphs = textToProcess
-      .split(/\n\s*\n/)
-      .map(p => p.trim())
-      .filter(p =>
-        p.length > 20 && // Reduced from 80 to 20
-        /[א-ת]/.test(p)
-        // Removed keyword filter to catch more paragraphs
-      );
-
-    console.log('Paragraphs found:', paragraphs.length);
-
-    return paragraphs.map((p, index) => ({
-      number: index + 1,
-      text: p,
-      source: "auto-paragraph"
-    }));
+  // Improved question detection using marker-based splitting
+  const questions = splitByQuestionMarkers(textToProcess);
+  
+  console.log('Questions detected:', questions.length);
+  
+  if (questions.length > 0) {
+    console.log('=== EXTRACT QUESTIONS DEBUG END ===');
+    return questions;
   }
 
+  // Fallback: split by instruction paragraphs
+  const paragraphQuestions = splitByInstructionParagraphs(textToProcess);
+  console.log('Paragraph questions detected:', paragraphQuestions.length);
+  
   console.log('=== EXTRACT QUESTIONS DEBUG END ===');
-  console.log('Total questions extracted:', questions.length);
+  return paragraphQuestions;
+}
+
+function splitByQuestionMarkers(text: string): Array<{ number: number; text: string; source: string }> {
+  // Comprehensive marker regex for Hebrew question indicators
+  const markerRegex = /(?:^|\n)\s*(?:שאלה\s*(?:מספר)?\s*(?:\d+|[א-ת][׳']?)|(?:\d+)[.)]|[א-ת][.)]|סעיף\s*[א-ת]|חלק\s*[א-ת])/g;
+  
+  const matches = [...text.matchAll(markerRegex)];
+  console.log('Marker matches found:', matches.length);
+  
+  if (matches.length < 2) {
+    return [];
+  }
+  
+  const questions: Array<{ number: number; text: string; source: string }> = [];
+  
+  for (let i = 0; i < matches.length; i++) {
+    const currentMatch = matches[i];
+    const nextMatch = matches[i + 1];
+    
+    const start = currentMatch.index;
+    const end = nextMatch ? nextMatch.index : text.length;
+    
+    let block = text.slice(start, end).trim();
+    
+    // Filter valid questions
+    if (block.length > 50 && /[א-ת]/.test(block)) {
+      // Remove the marker from the block text
+      const cleanBlock = block.replace(/^(?:שאלה\s*(?:מספר)?\s*(?:\d+|[א-ת][׳']?)|(?:\d+)[.)]|[א-ת][.)]|סעיף\s*[א-ת]|חלק\s*[א-ת])/, '').trim();
+      
+      questions.push({
+        number: questions.length + 1,
+        text: cleanBlock || block,
+        source: "auto-marker"
+      });
+    }
+  }
+  
   return questions;
+}
+
+function splitByInstructionParagraphs(text: string): Array<{ number: number; text: string; source: string }> {
+  const instructionKeywords = [
+    'נדרש', 'הסבר', 'חשב', 'נמק', 'פרט', 'קבע', 'ציין', 'דון', 
+    'נדרשת', 'הסבירו', 'חשבו', 'נמקו', 'קבעו', 'פרטו', 'ציינו'
+  ];
+  
+  const paragraphs = text
+    .split(/\n\s*\n/)
+    .map(p => p.trim())
+    .filter(p =>
+      p.length > 50 &&
+      /[א-ת]/.test(p) &&
+      instructionKeywords.some(keyword => p.includes(keyword))
+    );
+  
+  return paragraphs.map((p, index) => ({
+    number: index + 1,
+    text: p,
+    source: "auto-paragraph"
+  }));
 }
 
 // Helper function to generate answer with chunks (now returns suggestions, not final answers)
